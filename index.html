@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Audio FX Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h1>Audio FX Visualizer</h1>
+<div class="container">
+    <div class="controls">
+        <form>
+            <label><input type="radio" name="mode" value="demo" checked>Demo</label>
+            <label><input type="radio" name="mode" value="file" disabled> File (under construction)</label>
+            <label><input type="radio" name="mode" value="mic" disabled> Mic (under construction)</label>
+        </form>
+        <button id="startButton">Start</button>
+        <button id="stopButton" disabled>Stop</button>
+    </div>
+    <canvas id="waveform" width="640" height="300"></canvas>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

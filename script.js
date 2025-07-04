@@ -1,58 +1,41 @@
-const canvas = document.getElementById("waveform");
-const context = canvas.getContext("2d");
+import { Visualizer } from "./visualizer.js";
+
+const canvas = document.getElementById("visualizer");
 const startButton = document.getElementById("startButton");
 const stopButton = document.getElementById("stopButton");
 
-const bar_count = 64;
+const update_interval = 50;
 
-const update_interval = 100;
-let interval_id = null;
+const bars_count = 64;
 
-function drawBars() {
-    const width = canvas.width;
-    const height = canvas.height;
-    const center = height / 2;
-    const bar_width = width / bar_count;
+const visualizer = new Visualizer(canvas, bars_count);
 
-    context.clearRect(0, 0, width, height);
+let current_data = Array(bars_count).fill(canvas.height / 2);
 
-    for (let i = 0; i < bar_count; i++) {
-        const bar_height = Math.random() * (height / 2);
-        const x = i * bar_width + bar_width / 2;
-        const y_top = center - bar_height;
-
-        context.fillStyle = "#fff";
-        drawBar(x, y_top, bar_width - 4, bar_height * 2, 4);
+function updateData() {
+    for (let i = 0; i < bars_count; i++) {
+        let delta = (Math.random() * 2 - 1) * (Math.random() * 20);
+        current_data[i] += delta;
+        current_data[i] = Math.max(0, Math.min(current_data[i], canvas.height));
     }
-}
+};
 
-function drawBar(x_center, y, width, height, radius) {
-    const x = x_center - width / 2;
+visualizer.setDataProvider(() => current_data);
 
-    context.beginPath();
-    context.moveTo(x + radius, y);
-    context.lineTo(x + width - radius, y);
-    context.quadraticCurveTo(x + width, y, x + width, y + radius);
-    context.lineTo(x + width, y + height - radius);
-    context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    context.lineTo(x + radius, y + height);
-    context.quadraticCurveTo(x, y + height, x, y + height - radius);
-    context.lineTo(x, y + radius);
-    context.quadraticCurveTo(x, y, x + radius, y);
-    context.closePath();
-    context.fill();
-}
+let update_timer = null;
 
 startButton.addEventListener("click", () => {
     startButton.disabled = true;
     stopButton.disabled = false;
-    interval_id = setInterval(drawBars, update_interval);
+    update_timer = setInterval(updateData, update_interval)
+    visualizer.start();
 });
 
 stopButton.addEventListener("click", () => {
-    context.clearRect(0, 0, canvas.width, canvas.height);
     stopButton.disabled = true;
     startButton.disabled = false;
-    clearInterval(interval_id)
-    interval_id = null;
+    clearInterval(update_timer);
+    update_timer = null;
+    visualizer.stop()
+    current_data = Array(bars_count).fill(canvas.height / 2);
 });

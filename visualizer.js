@@ -49,16 +49,13 @@ export class Visualizer {
 
         for (let i = 0; i < this.bars_count; i++) {
             let bar_height = data[i] ?? 0;
-
-            if (!Number.isFinite(bar_height)) continue;
             
             bar_height = Math.max(0, Math.min(bar_height, height));
             const x = i * bar_width;
             const y = height - bar_height;
 
-            context.fillStyle = `hsl(${(i / this.bars_count) * 360}, 100%, 50%)`;
+            context.fillStyle = `hsl(${(i / this.bars_count) * 270}, 100%, 50%)`;
             context.fillRect(x, y, bar_width - 2, bar_height);
-            console.log(bar_height)
         }
     }
 }

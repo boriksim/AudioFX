@@ -11,11 +11,23 @@
     <div class="controls">
         <form>
             <label><input type="radio" name="mode" value="demo" checked>Demo</label>
-            <label><input type="radio" name="mode" value="file" disabled> File (under construction)</label>
-            <label><input type="radio" name="mode" value="mic" disabled> Mic (under construction)</label>
+            <label><input type="radio" name="mode" value="file">File</label>
+            <label><input type="radio" name="mode" value="mic">Mic</label>
         </form>
-        <button id="startButton">Start</button>
-        <button id="stopButton" disabled>Stop</button>
+        <div id="panel-demo" style="display: flex; flex-direction: column;">
+            <button id="startButton-demo">Start</button>
+            <button id="stopButton-demo" disabled>Stop</button>
+        </div>
+        <div id="panel-file" style="display: none; flex-direction: column;">
+            <input id="input-file" type="file" accept="audio/*">
+            <audio id="audio-player" controls style="width: 100%;"></audio>
+            <button id="startButton-file">Start</button>
+            <button id="stopButton-file" disabled>Stop</button>
+        </div>
+        <div id="panel-mic" style="display: none; flex-direction: column;">
+            <button id="startButton-mic">Start</button>
+            <button id="stopButton-mic" disabled>Stop</button>
+        </div>
     </div>
     <canvas id="visualizer" width="640" height="300"></canvas>
 </div>

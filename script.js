@@ -1,4 +1,7 @@
 import { Visualizer } from "./visualizer.js";
+import { initMicrophoneVisualizer } from "./initMicrophoneVisualizer.js";
+import { initFileVisualizer } from "./initFileVisualizer.js";
+
 
 const canvas = document.getElementById("visualizer");
 const panel_demo = document.getElementById("panel-demo")
@@ -15,9 +18,6 @@ const audio_context = new window.AudioContext();
 const analyzer = audio_context.createAnalyser();
 const fftSize = 8192;
 analyzer.fftSize = fftSize;
-const frequency_data = new Uint8Array(analyzer.frequencyBinCount);
-
-let source_node = null;
 
 const panel_file = document.getElementById("panel-file");
 const startButton_file = document.getElementById("startButton-file");
@@ -27,76 +27,35 @@ const panel_mic = document.getElementById("panel-mic");
 const startButton_mic = document.getElementById("startButton-mic");
 const stopButton_mic = document.getElementById("stopButton-mic");
 
-let mic_stream = null;
-let mic_source = null;
-let mic_analyzer = null;
-
-async function initMicVisualizer() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mic_stream = stream;
-
-        const audio_context = new AudioContext();
-        mic_source = audio_context.createMediaStreamSource(stream);
-
-        mic_analyzer = audio_context.createAnalyser();
-        mic_analyzer.fftSize = fftSize;
-        const data_array = new Uint8Array(mic_analyzer.frequencyBinCount);
-
-        mic_source.connect(mic_analyzer);
-
-        visualizer.setDataProvider(() => {
-            mic_analyzer.getByteFrequencyData(data_array);
-            return data_array;
-        });
-
-    } catch (err) {
-        console.error("Mic access error:", err);
-        alert("Microphone access denied or unavailable.");
-    }
-}
 
 mode_radios.forEach((radio) => {
     radio.addEventListener("change", () => {
         if (radio.checked) {
+            visualizer.stop();
             if (radio.value === "demo") {
+                startButton_demo.disabled = false;
+                stopButton_demo.disabled = true;
                 panel_demo.style.display = "flex";
                 panel_file.style.display = "none";
                 panel_mic.style.display = "none";
             }
             else if (radio.value === "file") {
+                startButton_file.disabled = false;
+                stopButton_file.disabled = true;
                 panel_demo.style.display = "none";
                 panel_file.style.display = "flex";
                 panel_mic.style.display = "none";
+                initFileVisualizer(input_file, audio_player, visualizer, fftSize, audio_context);
             }
             else if (radio.value === "mic") {
+                startButton_mic.disabled = false;
+                stopButton_mic.disabled = true;
                 panel_demo.style.display = "none";
                 panel_file.style.display = "none";
                 panel_mic.style.display = "flex";
-                initMicVisualizer();
+                initMicrophoneVisualizer(visualizer, fftSize, audio_context);
             }
         }
-    });
-});
-
-input_file.addEventListener("change", () => {
-    const file = input_file.files[0];
-    if (!file) return;
-
-    const url = URL.createObjectURL(file);
-    audio_player.src = url;
-
-    if (!source_node) {
-        source_node = audio_context.createMediaElementSource(audio_player);
-        source_node.connect(analyzer);
-        analyzer.connect(audio_context.destination);
-    }
-
-    audio_context.resume()
-
-    visualizer.setDataProvider(() => {
-        analyzer.getByteFrequencyData(frequency_data);
-        return frequency_data;
     });
 });
 

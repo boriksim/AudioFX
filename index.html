@@ -1,36 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>Audio FX Demo</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-<h1>Audio FX Visualizer</h1>
-<div class="container">
-    <div class="controls">
-        <form>
-            <label><input type="radio" name="mode" value="demo" checked>Demo</label>
-            <label><input type="radio" name="mode" value="file">File</label>
-            <label><input type="radio" name="mode" value="mic">Mic</label>
-        </form>
-        <div id="panel-demo" style="display: flex; flex-direction: column;">
-            <button id="startButton-demo">Start</button>
-            <button id="stopButton-demo" disabled>Stop</button>
+    <h1>Audio FX Visualizer</h1>
+    <div class="container">
+        <div class="controls">
+            <form>
+                <label><input type="radio" name="mode" value="demo" checked>Demo</label>
+                <label><input type="radio" name="mode" value="file">File</label>
+                <label><input type="radio" name="mode" value="mic">Mic</label>
+            </form>
+            <div id="panel-demo" style="display: flex; flex-direction: column;">
+                <button id="startButton-demo">Start</button>
+                <button id="stopButton-demo" disabled>Stop</button>
+            </div>
+            <div id="panel-file" style="display: none; flex-direction: column;">
+                <input id="input-file" type="file" accept="audio/*">
+                <audio id="audio-player" controls style="width: 100%; min-width: 400px;"></audio>
+                <button id="startButton-file">Start</button>
+                <button id="stopButton-file" disabled>Stop</button>
+            </div>
+            <div id="panel-mic" style="display: none; flex-direction: column;">
+                <button id="startButton-mic">Start</button>
+                <button id="stopButton-mic" disabled>Stop</button>
+                <button id="toggle-distortion">Distortion: Off</button>
+                <button id="toggle-lowpass">Lowpass filter: On</button>
+                <button id="toggle-delay">Delay: Off</button>
+                <label for="lowpass-slider">Lowpass Cutoff Frequency: <span id="lowpass-value">3000</span> Hz</label>
+                <input type="range" id="lowpass-slider" min="100" max="16000" step="10" value="3000">
+            </div>
         </div>
-        <div id="panel-file" style="display: none; flex-direction: column;">
-            <input id="input-file" type="file" accept="audio/*">
-            <audio id="audio-player" controls style="width: 100%;"></audio>
-            <button id="startButton-file">Start</button>
-            <button id="stopButton-file" disabled>Stop</button>
-        </div>
-        <div id="panel-mic" style="display: none; flex-direction: column;">
-            <button id="startButton-mic">Start</button>
-            <button id="stopButton-mic" disabled>Stop</button>
-        </div>
+        <canvas id="visualizer" width="800" height="375"></canvas>
     </div>
-    <canvas id="visualizer" width="640" height="300"></canvas>
-</div>
-<script type="module" src="script.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
+
 </html>

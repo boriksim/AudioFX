@@ -31,12 +31,25 @@
                 <button id="stopButton-mic" disabled>Stop</button>
                 <button id="toggle-distortion">Distortion: Off</button>
                 <button id="toggle-lowpass">Lowpass filter: On</button>
-                <button id="toggle-delay">Delay: Off</button>
-                <label for="lowpass-slider">Lowpass Cutoff Frequency: <span id="lowpass-value">3000</span> Hz</label>
-                <input type="range" id="lowpass-slider" min="100" max="16000" step="10" value="3000">
+                <label for="slider-lowpass">Lowpass Cutoff Frequency: <span id="value-lowpass">3000</span> Hz</label>
+                <input type="range" id="slider-lowpass" min="100" max="16000" step="10" value="3000">
             </div>
         </div>
         <canvas id="visualizer" width="800" height="375"></canvas>
+    </div>
+    <div class="effects-container" style="display: flex; justify-content: space-evenly;">
+        <div id="effect-delay" style="display: flex; flex-direction: column;">
+            <button id="toggle-delay">Delay: Off</button>
+
+            <label for="slider-delay-time">Time: <span id="value-delay-time">500</span> ms</label>
+            <input type="range" id="slider-delay-time" min="16" max="2500" step="1" value="500">
+
+            <label for="slider-delay-feedback">Feedback: <span id="value-delay-feedback">50</span>%</label>
+            <input type="range" id="slider-delay-feedback" min="0" max="100" step="1" value="50">
+
+            <label for="slider-delay-mix">Mix: <span id="value-delay-mix">50</span>%</label>
+            <input type="range" id="slider-delay-mix" min="0" max="100" step="1" value="50">
+        </div>
     </div>
     <script type="module" src="script.js"></script>
 </body>

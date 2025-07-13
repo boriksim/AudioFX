@@ -7,10 +7,11 @@ import { LowpassEffect } from "./effects/LowpassEffect.js";
 export async function initMicrophoneVisualizer(visualizer, fftSize) {
 
     const toggleDistortion = document.getElementById("toggle-distortion");
-    const sliderDistortionAmount = document.getElementById("slider-distortion-amount")
-    const labelDistortionAmount = document.getElementById("value-distortion-amount")
-    const sliderDistortionMix = document.getElementById("slider-distortion-mix")
-    const labelDistortionMix = document.getElementById("value-distortion-mix")
+    const sliderDistortionStrength = document.getElementById("slider-distortion-strength");
+    const labelDistortionStrength = document.getElementById("value-distortion-strength");
+    const sliderDistortionMix = document.getElementById("slider-distortion-mix");
+    const labelDistortionMix = document.getElementById("value-distortion-mix");
+    const selectDistortionType = document.getElementById("select-distortion-type");
 
     
     const toggleLowpass = document.getElementById("toggle-lowpass");
@@ -57,7 +58,7 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
         delay.setBypassed(true);
 
         const gain = audioContext.createGain();
-        gain.gain.value = 2.0;
+        gain.gain.value = 1.0;
 
         monoSource.connect(distortion.getInputNode());
         distortion.connect(lowpass);
@@ -66,26 +67,31 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
         gain.connect(analyzer);
         analyzer.connect(audioContext.destination);
 
-        // Distortion Buttons and sliders
+        // Distortion Buttons
         toggleDistortion.addEventListener("click", () => {
             const state = !distortion.bypassed;
             distortion.setBypassed(state);
             toggleDistortion.textContent = `Distortion: ${!state ? "On" : "Off"}`;
         });
 
-        sliderDistortionAmount.addEventListener("input", () => {
-            const value = parseFloat(sliderDistortionAmount.value * 10);
-            labelDistortionAmount.textContent = sliderDistortionAmount.value;
-            distortion.setAmount(value);
-        })
+        sliderDistortionStrength.addEventListener("input", () => {
+            const value = parseFloat(sliderDistortionStrength.value);
+            labelDistortionStrength.textContent = sliderDistortionStrength.value;
+            distortion.setStrength(value);
+        });
 
         sliderDistortionMix.addEventListener("input", () => {
             const value = parseFloat(sliderDistortionMix.value / 100);
             labelDistortionMix.textContent = sliderDistortionMix.value;
             distortion.setMix(value);
-        })
+        });
 
-        // Lowpass Buttons and sliders
+        selectDistortionType.addEventListener("change", () => {
+            const value = selectDistortionType.value;
+            distortion.setType(value);
+        });
+
+        // Lowpass Buttons
         toggleLowpass.addEventListener("click", () => {
             const state = !lowpass.bypassed;
             lowpass.setBypassed(state);
@@ -96,15 +102,15 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
             const value = parseFloat(sliderLowpassFrequency.value);
             labelLowpassFrequency.textContent = sliderLowpassFrequency.value;
             lowpass.setFrequency(value);
-        })
+        });
 
         sliderLowpassMix.addEventListener("input", () => {
             const value = parseFloat(sliderLowpassMix.value / 100);
             labelLowpassMix.textContent = sliderLowpassMix.value;
             lowpass.setMix(value);
-        })
+        });
 
-        // Delay Buttons and sliders
+        // Delay Buttons and
         toggleDelay.addEventListener("click", () => {
             const state = !delay.bypassed;
             delay.setBypassed(state);
@@ -115,19 +121,19 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
             const value = parseFloat(sliderDelayTime.value);
             labelDelayTime.textContent = value;
             delay.setTime(value / 100);
-        })
+        });
 
         sliderDelayFeedback.addEventListener("input", () => {
             const value = parseFloat(sliderDelayFeedback.value);
             labelDelayFeedback.textContent = value;
             delay.setFeedback(value / 100);
-        })
+        });
 
         sliderDelayMix.addEventListener("input", () => {
             const value = parseFloat(sliderDelayMix.value / 100);
             labelDelayMix.textContent = sliderDelayMix.value;
             delay.setMix(value);
-        })
+        });
 
         visualizer.setDataProvider(() => {
             analyzer.getByteFrequencyData(dataArray);

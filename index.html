@@ -37,8 +37,8 @@
         <div id="effect-distortion" style="display: flex; flex-direction: column;">
             <button id="toggle-distortion">Distortion: Off</button>
 
-            <label for="slider-distortion-amount">Amount: <span id="value-distortion-amount">50</span>%</label>
-            <input type="range" id="slider-distortion-amount" min="0" max="100" step="1" value="50">
+            <label for="slider-distortion-strength">Strength: <span id="value-distortion-strength">1</span></label>
+            <input type="range" id="slider-distortion-strength" min="0" max="10" step="0.1" value="1">
 
             <label for="slider-distortion-mix">Mix: <span id="value-distortion-mix">100</span>%</label>
             <input type="range" id="slider-distortion-mix" min="0" max="100" step="1" value="100">
@@ -51,7 +51,8 @@
                 <option value="exponential">Exponential</option>
                 <option value="foldback">Foldback</option>
                 <option value="bitcrusher">Bitcrusher</option>
-                <option value="polynomial">Polynomial</option>
+                <option value="symmetric">Symmetric</option>
+                <option value="diode-like">Diode-like</option>
             </select>
         </div>
 

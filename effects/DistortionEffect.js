@@ -7,51 +7,106 @@ export class DistortionEffect extends AbstractEffectNode {
         this.setMix(1.0);
 
         this.waveShaper = audioContext.createWaveShaper();
+        this.strength = 1;
+        this.type = "soft";
 
-        this.amount = 500;
-        this.waveShaper.curve = this.#makeDistortionCurve(this.amount);
-        this.waveShaper.oversample = "4x";
+        this.postGain = audioContext.createGain();
+
+        this.generateCurve();
 
         this.input.connect(this.waveShaper);
-        this.waveShaper.connect(this.effectOutput);
+        this.waveShaper.connect(this.postGain);
+        this.postGain.connect(this.effectOutput);
     }
 
-    setAmount(value) {
+    setStrength(value) {
         value = Math.max(0, Math.min(1000, value));
-        this.amount = value;
-        this.waveShaper.curve = this.#makeDistortionCurve(this.amount);
+        this.strength = value;
+        this.generateCurve();
     }
 
-    #makeDistortionCurve(amount = 500) {
-        const k = typeof amount === "number" ? amount : 50;
-        const n_samples = 44100;
-        const curve = new Float32Array(n_samples);
-        const deg = Math.PI / 180;
+    setType(type) {
+        this.type = type;
+        this.generateCurve();
+    }
 
-        for (let i = 0; i < n_samples; ++i) {
-            const x = (i * 2) / n_samples - 1;
-            // curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
-            curve[i] = Math.tanh(k * x);
-            // curve[i] = x < 0 ? -Math.pow(-x, 0.6) : Math.pow(x, 0.6);
+    generateCurve() {
+        const samples = 44100;
+        const curve = new Float32Array(samples);
+
+        const k = this.strength * 100;
+        const step = 2 / samples;
+
+        for (let i = 0; i < samples; i++) {
+            const x = i * step - 1;
+
+            switch (this.type) {
+                case "soft":
+                    curve[i] = x / (1 + Math.abs(k * x));
+                    this.postGain.gain.value = 1 + k * 0.1;
+                    break;
+                case "hard":
+                    curve[i] = Math.max(-0.6, Math.min(0.6, k * x));
+                    this.postGain.gain.value = 1;
+                    break;
+                case "tanh":
+                    curve[i] = Math.tanh(k * x);
+                    this.postGain.gain.value = 1;
+                    break;
+                case "exponential":
+                    curve[i] = (1 - Math.exp(-k * Math.abs(x))) * Math.sign(x);
+                    this.postGain.gain.value = 1;
+                    break;
+                case "foldback":
+                    const fold = Math.abs(x + k) % 2 - 1;
+                    this.postGain.gain.value = 1;
+                    curve[i] = fold;
+                    break;
+                case "bitcrusher":
+                    const steps = Math.max(2, Math.round(2 + (k / 100) * 8));
+                    curve[i] = Math.round(x * steps) / steps;
+                    this.postGain.gain.value = 1 + k * 0.1;
+                    break;
+                case "symmetric":
+                    curve[i] = x * (1 + k) / (1 + k * Math.abs(x));
+                    this.postGain.gain.value = 1;
+                    break;
+                case "diode-like":
+                    const a = 1 + k / 10;
+                    curve[i] = (x < 0) ? -Math.pow(Math.abs(x), a) : Math.pow(x, 1 / a);
+                    this.postGain.gain.value = 1;
+                    break;
+                default:
+                    curve[i] = x;
+            }
         }
-        return curve;
+
+        this.waveShaper.curve = curve;
+        this.waveShaper.oversample = "4x";
+
     }
 
     getConfigSchema() {
         return {
-            amount: {
+            strength: {
                 type: "range",
                 min: 0,
-                max: 1000,
-                step: 1,
-                value: this.amount,
+                max: 10,
+                step: 0.1,
+                value: this.strength,
+            },
+            type: {
+                type: "select",
+                options: ["soft", "hard", "tanh", "exponential", "foldback", "bitcrusher", "symmetric", "diode-like"],
+                value: this.type,
             },
         };
     }
 
-    updateConfig({ amount, mix }) {
+    updateConfig({ strength, type, mix }) {
         super.updateConfig({ mix });
-        if (typeof amount === "number") this.setAmount(amount);
+        if (typeof strength === "number") this.setStrength(strength);
+        if (typeof type === "string") this.setType(type);
     }
 
 }

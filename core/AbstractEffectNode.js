@@ -11,6 +11,7 @@ export default class AbstractEffectNode extends AbstractAudioNode {
     this.dryGain = this.audioContext.createGain();
     this.wetGain = this.audioContext.createGain();
     this.effectOutput = this.audioContext.createGain();
+    this.mix = 0.5;
 
     this.input.connect(this.dryGain);
     this.dryGain.connect(this.output);
@@ -26,18 +27,16 @@ export default class AbstractEffectNode extends AbstractAudioNode {
   setBypassed(bypassed) {
     this.bypassed = bypassed;
     if (bypassed) {
-      console.log("bypassed");
       this.dryGain.gain.value = 1.0;
       this.wetGain.gain.value = 0.0;
     } else {
-      console.log("not bypassed");
-      const mix = this.wetGain.gain.value;
-      this.setMix(mix);
+      this.setMix(this.mix);
     }
   }
 
   setMix(value) {
     value = Math.max(0, Math.min(1, value));
+    this.mix = value;
     this.dryGain.gain.value = 1 - value;
     this.wetGain.gain.value = value;
   }

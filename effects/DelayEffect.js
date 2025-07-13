@@ -4,12 +4,14 @@ export class DelayEffect extends AbstractEffectNode {
     constructor(audioContext) {
         super(audioContext);
 
-        this.delayNode = audioContext.createDelay();
+        this.delayNode = audioContext.createDelay(2.5);
         this.feedbackGain = audioContext.createGain();
 
         // Значения по умолчанию
-        this.delayNode.delayTime.value = 0.3;
-        this.feedbackGain.gain.value = 0.4;
+        this.delayNode.delayTime.value = 0.25;
+        this.feedbackGain.gain.value = 0.2;
+
+        this.feedbackGainValue = 0.2;
 
         // Соединение внутренней схемы
         this.delayNode.connect(this.feedbackGain);
@@ -19,6 +21,37 @@ export class DelayEffect extends AbstractEffectNode {
 
         this.delayNode.connect(this.effectOutput);
     }
+
+    setTime(value) {
+        value = Math.max(0.016, Math.min(2.5, value));
+        const delayTime = this.delayNode.delayTime;
+
+        const now = this.audioContext.currentTime;
+
+        delayTime.cancelScheduledValues(now);
+
+        delayTime.linearRampToValueAtTime(value, now + 0.2);
+    }
+
+    setFeedback(value) {
+        value = Math.max(0, Math.min(1, value));
+        this.feedbackGain.gain.value = value;
+        this.feedbackGainValue = value;
+    }
+
+    setBypassed(bypassed) {
+        super.setBypassed(bypassed);
+
+        if (bypassed) {
+            this.delayNode.disconnect(this.feedbackGain);
+            this.feedbackGainValue = this.feedbackGain.gain.value;
+            this.feedbackGain.gain.value = 0.0;
+        } else {
+            this.delayNode.connect(this.feedbackGain);
+            this.feedbackGain.gain.value = this.feedbackGainValue;
+        }
+    }
+
 
     getConfigSchema() {
         return {

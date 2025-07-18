@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Audio FX Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <h1>Audio FX Visualizer</h1>
+    <div class="container">
+        <div class="controls">
+            <form>
+                <label><input type="radio" name="mode" value="file">File</label>
+                <label><input type="radio" name="mode" value="mic">Mic</label>
+            </form>
+            <div id="panel-file" style="display: none; flex-direction: column;">
+                <input id="input-file" type="file" accept="audio/*">
+                <audio id="audio-player" controls style="width: 100%; min-width: 400px;"></audio>
+            </div>
+            <div id="panel-mic" style="display: none; flex-direction: column;">
+            </div>
+        </div>
+        <canvas id="visualizer" width="800" height="375"></canvas>
+    </div>
+    <div class="effects-container" id="effects-container" style="display: flex; justify-content: space-evenly;"></div>
+    <script type="module" src="script2.js"></script>
+</body>
+
+</html>

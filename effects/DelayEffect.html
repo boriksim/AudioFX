@@ -1,0 +1,16 @@
+<!-- DelayEffect.html: интерфейс для эффекта задержки (Delay) -->
+<!-- Вся разметка находится внутри одного контейнера -->
+<div class="delay-effect">
+  <!-- Ползунок для настройки времени задержки -->
+  <label>
+    Delay Time:
+    <input type="range" min="0" max="2" step="0.01" value="0.5" data-fx-delay_time>
+    <span data-fx-delay_time-value>0.5</span> <!-- Показывает текущее значение -->
+  </label>
+  <br>
+  <!-- Кнопка включения/выключения эффекта -->
+  <label>
+    Bypass:
+    <input type="checkbox" value="1" data-fx-bypass>
+  </label>
+</div> 

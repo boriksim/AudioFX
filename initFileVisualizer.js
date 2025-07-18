@@ -1,5 +1,4 @@
 export function initFileVisualizer(input_file, audio_player, visualizer, fftSize, audio_context) {
-    // const audio_context = new window.AudioContext();
     const analyzer = audio_context.createAnalyser();
     analyzer.fftSize = fftSize;
     const frequency_data = new Uint8Array(analyzer.frequencyBinCount);

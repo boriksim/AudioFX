@@ -1,8 +1,10 @@
 import AbstractAudioNode from "./AbstractAudioNode.js"
 
 export default class AbstractEffectNode extends AbstractAudioNode {
-  constructor(audioContext) {
+  constructor(audioContext, domElement) {
     super(audioContext);
+
+    this.domElement = domElement;
 
     // Общие input/output
     this.input = this.audioContext.createGain();
@@ -22,7 +24,11 @@ export default class AbstractEffectNode extends AbstractAudioNode {
     // Может использоваться для байпаса
     this.bypassed = true;
     // this.setBypassed(this.bypassed);
+
+    this.initUI();
   }
+
+  initUI() {}
   
   setBypassed(bypassed) {
     this.bypassed = bypassed;

@@ -1,10 +1,44 @@
-import { DelayEffect } from "./effects/DelayEffect.js"
 import { DistortionEffect } from "./effects/DistortionEffect.js";
 import { LowpassEffect } from "./effects/LowpassEffect.js";
-
-
+import { DelayEffect } from "./effects/DelayEffect.js"
+import { ChorusEffect } from "./effects/ChorusEffect.js";
+import { PhaserEffect } from "./effects/PhaserEffect.js";
+import { FlangerEffect } from "./effects/FlangerEffect.js";
+// import { PitchShifterEffect } from "./effects/PitchShifterEffect.js";
 
 export async function initMicrophoneVisualizer(visualizer, fftSize) {
+
+    // const togglePitchShifter = document.getElementById("toggle-pitchshifter");
+    // const sliderPitchShifterPitch = document.getElementById("slider-pitchshifter-pitch");
+    // const labelPitchShifterPitch = document.getElementById("value-pitchshifter-pitch");
+    // const sliderPitchShifterMix = document.getElementById("slider-pitchshifter-mix");
+    // const labelPitchShifterMix = document.getElementById("value-pitchshifter-mix");
+
+    const toggleChorus = document.getElementById("toggle-chorus");
+    const sliderChorusRate = document.getElementById("slider-chorus-rate");
+    const labelChorusRate = document.getElementById("value-chorus-rate");
+    const sliderChorusDepth = document.getElementById("slider-chorus-depth");
+    const labelChorusDepth = document.getElementById("value-chorus-depth");
+    const sliderChorusMix = document.getElementById("slider-chorus-mix");
+    const labelChorusMix = document.getElementById("value-chorus-mix");
+
+    const togglePhaser = document.getElementById("toggle-phaser");
+    const sliderPhaserRate = document.getElementById("slider-phaser-rate");
+    const labelPhaserRate = document.getElementById("value-phaser-rate");
+    const sliderPhaserDepth = document.getElementById("slider-phaser-depth");
+    const labelPhaserDepth = document.getElementById("value-phaser-depth");
+    const sliderPhaserMix = document.getElementById("slider-phaser-mix");
+    const labelPhaserMix = document.getElementById("value-phaser-mix");
+
+    const toggleFlanger = document.getElementById("toggle-flanger");
+    const sliderFlangerRate = document.getElementById("slider-flanger-rate");
+    const labelFlangerRate = document.getElementById("value-flanger-rate");
+    const sliderFlangerDepth = document.getElementById("slider-flanger-depth");
+    const labelFlangerDepth = document.getElementById("value-flanger-depth");
+    const sliderFlangerFeedback = document.getElementById("slider-flanger-feedback");
+    const labelFlangerFeedback = document.getElementById("value-flanger-feedback");
+    const sliderFlangerMix = document.getElementById("slider-flanger-mix");
+    const labelFlangerMix = document.getElementById("value-flanger-mix");
 
     const toggleDistortion = document.getElementById("toggle-distortion");
     const sliderDistortionStrength = document.getElementById("slider-distortion-strength");
@@ -13,14 +47,12 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
     const labelDistortionMix = document.getElementById("value-distortion-mix");
     const selectDistortionType = document.getElementById("select-distortion-type");
 
-    
     const toggleLowpass = document.getElementById("toggle-lowpass");
     const sliderLowpassFrequency = document.getElementById("slider-lowpass-frequency");
     const labelLowpassFrequency = document.getElementById("value-lowpass-frequency");
     const sliderLowpassMix = document.getElementById("slider-lowpass-mix");
     const labelLowpassMix = document.getElementById("value-lowpass-mix");
 
-    
     const toggleDelay = document.getElementById("toggle-delay");
     const sliderDelayTime = document.getElementById("slider-delay-time");
     const labelDelayTime = document.getElementById("value-delay-time");
@@ -42,11 +74,23 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
         const audioContext = new AudioContext();
         const micSource = audioContext.createMediaStreamSource(stream);
 
-        const monoSource = createMonoInput(audioContext, micSource)
+        const monoSource = createMonoInput(audioContext, micSource, "left")
 
         const analyzer = audioContext.createAnalyser();
         analyzer.fftSize = fftSize;
         const dataArray = new Uint8Array(analyzer.frequencyBinCount);
+
+        // const pitch = new PitchShifterEffect(audioContext);
+        // pitch.setBypassed(true);
+
+        const chorus = new ChorusEffect(audioContext);
+        chorus.setBypassed(true);
+
+        const phaser = new PhaserEffect(audioContext);
+        phaser.setBypassed(true);
+
+        const flanger = new FlangerEffect(audioContext);
+        flanger.setBypassed(true);
 
         const distortion = new DistortionEffect(audioContext);
         distortion.setBypassed(true);
@@ -60,12 +104,116 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
         const gain = audioContext.createGain();
         gain.gain.value = 1.0;
 
-        monoSource.connect(distortion.getInputNode());
+        monoSource.connect(chorus.getInputNode());
+        // pitch.connect(chorus);
+        chorus.connect(phaser);
+        phaser.connect(flanger);
+        flanger.connect(distortion);
         distortion.connect(lowpass);
         lowpass.connect(delay);
         delay.connect(gain);
         gain.connect(analyzer);
         analyzer.connect(audioContext.destination);
+
+        // // Pitch Shifter Buttons
+        // togglePitchShifter.addEventListener("click", () => {
+        //     const state = !pitch.bypassed;
+        //     pitch.setBypassed(state);
+        //     togglePitchShifter.textContent = `Pitch Shifter: ${!state ? "On" : "Off"}`;
+        // });
+
+        // sliderPitchShifterPitch.addEventListener("input", () => {
+        //     const value = parseFloat(sliderPitchShifterPitch.value);
+        //     labelPitchShifterPitch.textContent = value;
+        //     pitch.setPitch(value);
+        // });
+
+        // sliderPitchShifterMix.addEventListener("input", () => {
+        //     const value = parseFloat(sliderPitchShifterMix.value / 100);
+        //     labelPitchShifterMix.textContent = sliderPitchShifterMix.value;
+        //     pitch.setMix(value);
+        // });
+
+        // Chorus Buttons
+        toggleChorus.addEventListener("click", () => {
+            const state = !chorus.bypassed;
+            chorus.setBypassed(state);
+            toggleChorus.textContent = `Chorus: ${!state ? "On" : "Off"}`;
+        });
+
+        sliderChorusRate.addEventListener("input", () => {
+            const value = parseFloat(sliderChorusRate.value);
+            labelChorusRate.textContent = value;
+            chorus.setRate(value);
+        });
+
+        sliderChorusDepth.addEventListener("input", () => {
+            const value = parseFloat(sliderChorusDepth.value);
+            labelChorusDepth.textContent = Math.round(value * 100);
+            chorus.setDepth(value);
+        });
+
+        sliderChorusMix.addEventListener("input", () => {
+            const value = parseFloat(sliderChorusMix.value / 100);
+            labelChorusMix.textContent = sliderChorusMix.value;
+            chorus.setMix(value);
+        });
+
+        // Phaser Buttons
+        togglePhaser.addEventListener("click", () => {
+            const state = !phaser.bypassed;
+            phaser.setBypassed(state);
+            togglePhaser.textContent = `Phaser: ${!state ? "On" : "Off"}`;
+        });
+
+        sliderPhaserRate.addEventListener("input", () => {
+            const value = parseFloat(sliderPhaserRate.value);
+            labelPhaserRate.textContent = value;
+            phaser.setRate(value);
+        });
+
+        sliderPhaserDepth.addEventListener("input", () => {
+            const value = parseFloat(sliderPhaserDepth.value);
+            labelPhaserDepth.textContent = Math.round(value * 100);
+            phaser.setDepth(value);
+        });
+
+        sliderPhaserMix.addEventListener("input", () => {
+            const value = parseFloat(sliderPhaserMix.value / 100);
+            labelPhaserMix.textContent = sliderPhaserMix.value;
+            phaser.setMix(value);
+        });
+
+        // Flanger Buttons
+        toggleFlanger.addEventListener("click", () => {
+            const state = !flanger.bypassed;
+            flanger.setBypassed(state);
+            toggleFlanger.textContent = `Flanger: ${!state ? "On" : "Off"}`;
+        });
+
+        sliderFlangerRate.addEventListener("input", () => {
+            const value = parseFloat(sliderFlangerRate.value);
+            labelFlangerRate.textContent = value;
+            flanger.setRate(value);
+        });
+
+        sliderFlangerDepth.addEventListener("input", () => {
+            const value = parseFloat(sliderFlangerDepth.value);
+            labelFlangerDepth.textContent = Math.round(value * 100);
+            flanger.setDepth(value);
+        });
+
+        sliderFlangerFeedback.addEventListener("input", () => {
+            const value = parseFloat(sliderFlangerFeedback.value);
+            labelFlangerFeedback.textContent = Math.round(value * 100);
+            flanger.setFeedback(value);
+        });
+
+        sliderFlangerMix.addEventListener("input", () => {
+            const value = parseFloat(sliderFlangerMix.value / 100);
+            labelFlangerMix.textContent = sliderFlangerMix.value;
+            flanger.setMix(value);
+        });
 
         // Distortion Buttons
         toggleDistortion.addEventListener("click", () => {
@@ -110,7 +258,7 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
             lowpass.setMix(value);
         });
 
-        // Delay Buttons and
+        // Delay Buttons
         toggleDelay.addEventListener("click", () => {
             const state = !delay.bypassed;
             delay.setBypassed(state);
@@ -120,7 +268,7 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
         sliderDelayTime.addEventListener("input", () => {
             const value = parseFloat(sliderDelayTime.value);
             labelDelayTime.textContent = value;
-            delay.setTime(value / 100);
+            delay.setTime(value / 1000);
         });
 
         sliderDelayFeedback.addEventListener("input", () => {
@@ -145,22 +293,27 @@ export async function initMicrophoneVisualizer(visualizer, fftSize) {
     }
 }
 
-function createMonoInput (audioContext, sourceNode) {
+function createMonoInput(audioContext, sourceNode, channel = "average") {
     const splitter = audioContext.createChannelSplitter(2);
     const merger = audioContext.createChannelMerger(1);
 
-    const gainL = audioContext.createGain();
-    const gainR = audioContext.createGain();
-
-    gainL.gain.value = 0.5;
-    gainR.gain.value = 0.5;
-
     sourceNode.connect(splitter);
-    splitter.connect(gainL, 0);
-    splitter.connect(gainR, 1);
 
-    gainL.connect(merger, 0, 0);
-    gainR.connect(merger, 0, 0);
+    if (channel === "left") {
+        splitter.connect(merger, 0, 0);
+    } else if (channel === "right") {
+        splitter.connect(merger, 1, 0);
+    } else {
+        const gainL = audioContext.createGain();
+        const gainR = audioContext.createGain();
+        gainL.gain.value = 0.5;
+        gainR.gain.value = 0.5;
+
+        splitter.connect(gainL, 0);
+        splitter.connect(gainR, 1);
+        gainL.connect(merger, 0, 0);
+        gainR.connect(merger, 0, 0);
+    }
 
     return merger;
 }

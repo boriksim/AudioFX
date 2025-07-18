@@ -1,6 +1,7 @@
 import { Visualizer } from "./visualizer.js";
 import { initMicrophoneVisualizer } from "./initMicrophoneVisualizer.js";
 import { initFileVisualizer } from "./initFileVisualizer.js";
+// import { initFileVisualizer } from "./initFileVisualizerTemp.js";
 
 
 const canvas = document.getElementById("visualizer");
@@ -121,3 +122,9 @@ stopButton_mic.addEventListener("click", () => {
     visualizer.stop()
 });
 
+
+const response = await fetch("/effects/LowpassEffect.html"); 
+const html = await response.text();
+console.log(html);
+const effectsContainer = document.getElementById("effects-container");
+effectsContainer.innerHTML += html;

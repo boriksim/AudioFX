@@ -1,8 +1,8 @@
 import AbstractEffectNode from "../core/AbstractEffectNode.js"
 
 export class LowpassEffect extends AbstractEffectNode {
-    constructor(audioContext) {
-        super(audioContext);
+    constructor(audioContext, domElement) {
+        super(audioContext, domElement);
 
         this.setMix(1.0);
 
@@ -13,6 +13,14 @@ export class LowpassEffect extends AbstractEffectNode {
         this.input.connect(this.lowpassNode);
 
         this.lowpassNode.connect(this.effectOutput);
+    }
+
+    initUI() {
+        const freq = this.domElement.querySelector('[data-freq]');
+        this.setFrequency(freq);
+        this.delaySlider.addEventListener('input', (e) => {
+            this.setParam('delayTime', parseFloat(e.target.value));
+        });
     }
 
     setFrequency(value) {

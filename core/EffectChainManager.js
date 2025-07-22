@@ -90,30 +90,30 @@ export class EffectChainManager {
   // Метод для пересборки аудио-цепочки
   rebuildAudioChain() {
     // Отключаем все эффекты
-    let prevNode = null;
     for (const effect of this.effectChain) {
       if (effect.audioNode && typeof effect.audioNode.disconnect === 'function') {
         effect.audioNode.disconnect();
       }
     }
+
     // Соединяем эффекты друг с другом
-    for (let i = 0; i < this.effectChain.length; i++) {
-      const effect = this.effectChain[i];
-      if (i === 0) {
-        // Первый эффект подключается к источнику (например, входу)
-        prevNode = effect.audioNode;
-        continue;
-      } else {
-        if (prevNode && effect.audioNode && typeof prevNode.connect === 'function') {
-          prevNode.connect(effect.audioNode);
-        }
-        prevNode = effect.audioNode;
+    for (let i = 0; i < this.effectChain.length - 1; i++) {
+      const currentEffect = this.effectChain[i];
+      const nextEffect = this.effectChain[i + 1];
+
+      if (currentEffect.audioNode && nextEffect.audioNode && typeof currentEffect.audioNode.connect === 'function') {
+        currentEffect.audioNode.connect(nextEffect.audioNode);
       }
     }
-    // Последний эффект подключается к выходу (например, к audioContext.destination)
-    if (prevNode && typeof prevNode.connect === 'function') {
-      prevNode.connect(this.audioContext.destination);
+
+    if (this.effectChain.length > 0) {
+      const lastEffect = this.effectChain[this.effectChain.length - 1];
+      if (lastEffect.audioNode && typeof lastEffect.audioNode.connect === 'function') {
+        lastEffect.audioNode.connect(this.audioContext.destination);
+      }
     }
+
+    console.log("Audio chain rebult: ", this.effectChain.map(e => e.name));
   }
 
   // Получить эффект по id

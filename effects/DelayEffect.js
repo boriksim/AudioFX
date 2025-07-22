@@ -6,11 +6,15 @@ export class DelayEffect extends AbstractEffectNode {
   constructor(audioContext, domElement) {
     // Вызываем конструктор родителя
     super(audioContext, domElement);
+
     // Создаём аудио-ноду задержки
     this.delayNode = audioContext.createDelay(2.0);
-    this.input.connect(this.delayNode);;
+    this.delayNode.delayTime.value = 0.5;
+
+    this.input.connect(this.delayNode);
     this.delayNode.connect(this.effectOutput);
-    // Состояние обхода (bypass)
+
+    this.setMix(0.5);
     this.bypass = false;
   }
 

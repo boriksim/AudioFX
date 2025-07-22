@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mic Test</title>
+</head>
+<body>
+    <h1>Тест микрофона</h1>
+    <button id="testBtn">Тест прямого подключения микрофона</button>
+    <br><br>
+    <canvas id="waveform" width="800" height="200" style="border: 1px solid #000;"></canvas>
+    <br>
+    <div id="info"></div>
+
+    <script>
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            try {
+                const audioContext = new AudioContext();
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                    }
+                });
+
+                const source = audioContext.createMediaStreamSource(stream);
+                
+                // Прямое подключение к выходу для теста
+                source.connect(audioContext.destination);
+
+                // Анализатор для визуализации
+                const analyser = audioContext.createAnalyser();
+                source.connect(analyser);
+                
+                analyser.fftSize = 2048;
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                const canvas = document.getElementById('waveform');
+                const canvasCtx = canvas.getContext('2d');
+
+                function draw() {
+                    requestAnimationFrame(draw);
+                    analyser.getByteTimeDomainData(dataArray);
+
+                    canvasCtx.fillStyle = 'rgb(200, 200, 200)';
+                    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    canvasCtx.lineWidth = 2;
+                    canvasCtx.strokeStyle = 'rgb(0, 0, 0)';
+                    canvasCtx.beginPath();
+
+                    let sliceWidth = canvas.width * 1.0 / bufferLength;
+                    let x = 0;
+
+                    for (let i = 0; i < bufferLength; i++) {
+                        let v = dataArray[i] / 128.0;
+                        let y = v * canvas.height / 2;
+
+                        if (i === 0) {
+                            canvasCtx.moveTo(x, y);
+                        } else {
+                            canvasCtx.lineTo(x, y);
+                        }
+                        x += sliceWidth;
+                    }
+
+                    canvasCtx.lineTo(canvas.width, canvas.height / 2);
+                    canvasCtx.stroke();
+                }
+
+                draw();
+
+                document.getElementById('info').innerHTML = `
+                    <p>AudioContext state: ${audioContext.state}</p>
+                    <p>Sample rate: ${audioContext.sampleRate}</p>
+                    <p>Stream active: ${stream.active}</p>
+                    <p>Audio tracks: ${stream.getAudioTracks().length}</p>
+                `;
+
+                console.log('Direct mic test started');
+                console.log('Stream:', stream);
+                console.log('Audio tracks:', stream.getAudioTracks());
+
+            } catch (error) {
+                console.error('Mic test error:', error);
+                document.getElementById('info').innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

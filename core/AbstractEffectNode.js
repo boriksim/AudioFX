@@ -22,8 +22,8 @@ export default class AbstractEffectNode extends AbstractAudioNode {
     this.wetGain.connect(this.output);
 
     // Может использоваться для байпаса
-    this.bypassed = true;
-    // this.setBypassed(this.bypassed);
+    this.bypassed = false;
+    this.setBypassed(this.bypassed);
 
     this.initUI();
   }

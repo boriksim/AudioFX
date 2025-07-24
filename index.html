@@ -12,125 +12,19 @@
     <div class="container">
         <div class="controls">
             <form>
-                <label><input type="radio" name="mode" value="demo" checked>Demo</label>
                 <label><input type="radio" name="mode" value="file">File</label>
                 <label><input type="radio" name="mode" value="mic">Mic</label>
             </form>
-            <div id="panel-demo" style="display: flex; flex-direction: column;">
-                <button id="startButton-demo">Start</button>
-                <button id="stopButton-demo" disabled>Stop</button>
-            </div>
             <div id="panel-file" style="display: none; flex-direction: column;">
                 <input id="input-file" type="file" accept="audio/*">
                 <audio id="audio-player" controls style="width: 100%; min-width: 400px;"></audio>
-                <button id="startButton-file">Start</button>
-                <button id="stopButton-file" disabled>Stop</button>
             </div>
             <div id="panel-mic" style="display: none; flex-direction: column;">
-                <button id="startButton-mic">Start</button>
-                <button id="stopButton-mic" disabled>Stop</button>
             </div>
         </div>
         <canvas id="visualizer" width="800" height="375"></canvas>
     </div>
-    <div class="effects-container" id="effects-container" style="display: flex; justify-content: space-evenly;">
-        <!-- <div id="effect-pitchshifter" style="display: flex; flex-direction: column;">
-            <button id="toggle-pitchshifter">Pitch Shifter: Off</button>
-
-            <label for="slider-pitchshifter-pitch">Pitch: <span id="value-pitchshifter-pitch">0</span></label>
-            <input type="range" id="slider-pitchshifter-pitch" min="-24" max="24" step="1" value="0">
-
-            <label for="slider-pitchshifter-mix">Mix: <span id="value-pitchshifter-mix">100</span>%</label>
-            <input type="range" id="slider-pitchshifter-mix" min="0" max="100" step="1" value="100">
-        </div> -->
-
-        <div id="effect-chorus" style="display: flex; flex-direction: column;">
-            <button id="toggle-chorus">Chorus: Off</button>
-
-            <label for="slider-chorus-rate">Rate: <span id="value-chorus-rate">4.0</span> Hz</label>
-            <input type="range" id="slider-chorus-rate" min="0.1" max="10" step="0.1" value="4.0">
-
-            <label for="slider-chorus-depth">Depth: <span id="value-chorus-depth">50</span>%</label>
-            <input type="range" id="slider-chorus-depth" min="0" max="1" step="0.01" value="0.5">
-
-            <label for="slider-chorus-mix">Mix: <span id="value-chorus-mix">100</span>%</label>
-            <input type="range" id="slider-chorus-mix" min="0" max="100" step="1" value="100">
-        </div>
-
-        <div id="effect-phaser" style="display: flex; flex-direction: column;">
-            <button id="toggle-phaser">Phaser: Off</button>
-
-            <label for="slider-phaser-rate">Rate: <span id="value-phaser-rate">4.0</span> Hz</label>
-            <input type="range" id="slider-phaser-rate" min="0.1" max="10" step="0.1" value="4.0">
-
-            <label for="slider-phaser-depth">Depth: <span id="value-phaser-depth">50</span>%</label>
-            <input type="range" id="slider-phaser-depth" min="0" max="1" step="0.01" value="0.5">
-
-            <label for="slider-phaser-mix">Mix: <span id="value-phaser-mix">100</span>%</label>
-            <input type="range" id="slider-phaser-mix" min="0" max="100" step="1" value="100">
-        </div>
-
-        <div id="effect-flanger" style="display: flex; flex-direction: column;">
-            <button id="toggle-flanger">Flanger: Off</button>
-
-            <label for="slider-flanger-rate">Rate: <span id="value-flanger-rate">0.25</span> Hz</label>
-            <input type="range" id="slider-flanger-rate" min="0.01" max="5" step="0.01" value="0.25">
-
-            <label for="slider-flanger-depth">Depth: <span id="value-flanger-depth">40</span>%</label>
-            <input type="range" id="slider-flanger-depth" min="0" max="1" step="0.01" value="0.4">
-
-            <label for="slider-flanger-feedback">Feedback: <span id="value-flanger-feedback">50</span>%</label>
-            <input type="range" id="slider-flanger-feedback" min="0" max="1" step="0.01" value="0.5">
-
-            <label for="slider-flanger-mix">Mix: <span id="value-flanger-mix">100</span>%</label>
-            <input type="range" id="slider-flanger-mix" min="0" max="1" step="0.01" value="1">
-        </div>
-
-        <div id="effect-distortion" style="display: flex; flex-direction: column;">
-            <button id="toggle-distortion">Distortion: Off</button>
-
-            <label for="slider-distortion-strength">Strength: <span id="value-distortion-strength">1</span></label>
-            <input type="range" id="slider-distortion-strength" min="0" max="10" step="0.1" value="1">
-
-            <label for="slider-distortion-mix">Mix: <span id="value-distortion-mix">100</span>%</label>
-            <input type="range" id="slider-distortion-mix" min="0" max="100" step="1" value="100">
-
-            <label for="select-distortion-type">Distortion Type:</label>
-            <select id="select-distortion-type">
-                <option value="soft">Soft Clipping</option>
-                <option value="hard">Hard Clipping</option>
-                <option value="tanh">Tanh</option>
-                <option value="exponential">Exponential</option>
-                <option value="foldback">Foldback</option>
-                <option value="bitcrusher">Bitcrusher</option>
-                <option value="symmetric">Symmetric</option>
-                <option value="diode-like">Diode-like</option>
-            </select>
-        </div>
-
-        <div id="effect-lowpass" style="display: flex; flex-direction: column;">
-            <button id="toggle-lowpass">Lowpass: On</button>
-
-            <label for="slider-lowpass-frequency">Cutoff: <span id="value-lowpass-frequency">3000</span> Hz</label>
-            <input type="range" id="slider-lowpass-frequency" min="100" max="16000" step="10" value="3000">
-
-            <label for="slider-lowpass-mix">Mix: <span id="value-lowpass-mix">100</span>%</label>
-            <input type="range" id="slider-lowpass-mix" min="0" max="100" step="1" value="100">
-        </div>
-
-        <div id="effect-delay" style="display: flex; flex-direction: column;">
-            <button id="toggle-delay">Delay: Off</button>
-
-            <label for="slider-delay-time">Time: <span id="value-delay-time">250</span> ms</label>
-            <input type="range" id="slider-delay-time" min="16" max="2500" step="1" value="250">
-
-            <label for="slider-delay-feedback">Feedback: <span id="value-delay-feedback">20</span>%</label>
-            <input type="range" id="slider-delay-feedback" min="0" max="100" step="1" value="20">
-
-            <label for="slider-delay-mix">Mix: <span id="value-delay-mix">50</span>%</label>
-            <input type="range" id="slider-delay-mix" min="0" max="100" step="1" value="50">
-        </div>
-    </div>
+    <div class="effects-container" id="effects-container" style="display: flex; justify-content: space-evenly;"></div>
     <script type="module" src="script.js"></script>
 </body>
 

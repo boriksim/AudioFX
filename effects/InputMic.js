@@ -1,16 +1,26 @@
 import AbstractAudioNode from "../core/AbstractAudioNode.js";
 
 export class InputMic extends AbstractAudioNode {
-    constructor(audioContext, stream) {
+    constructor(audioContext, domElement) {
         super(audioContext);
+        this.audioContext = audioContext;
+        this.domElement = domElement;
+        
+        this.stream = null;
+        this.source = null;
 
-        const micSource = audioContext.createMediaStreamSource(stream);
+        this.splitter = audioContext.createChannelSplitter(2);
+        this.mergerMono = audioContext.createChannelMerger(1);
+        this.mergerStereo = audioContext.createChannelMerger(2);
 
-        this.input = null;
+        this.channelMode = "left";
+        this.convertToMono = true;
+        this.gainNode = audioContext.createGain();
+        this.gainNode.gain.value = 1.0;
 
-        const monoSource = this.createMonoInput(audioContext, micSource, "left")
+        this.output = this.gainNode;
 
-        this.output = monoSource;
+        this.initUI();
     }
 
     getInputNode() {
@@ -33,28 +43,90 @@ export class InputMic extends AbstractAudioNode {
         this.disconnect();
     }
 
-    createMonoInput(audioContext, sourceNode, channel = "average") {
-        const splitter = audioContext.createChannelSplitter(2);
-        const merger = audioContext.createChannelMerger(1);
+    setupRouting() {
+        const context = this.audioContext;
 
-        sourceNode.connect(splitter);
+        try { this.source.disconnect(); } catch (_) { }
+        try { this.splitter.disconnect(); } catch (_) { }
+        try { this.mergerMono.disconnect(); } catch (_) { }
+        try { this.mergerStereo.disconnect(); } catch (_) { }
 
-        if (channel === "left") {
-            splitter.connect(merger, 0, 0);
-        } else if (channel === "right") {
-            splitter.connect(merger, 1, 0);
+        this.source.connect(this.splitter);
+
+        let splitted;
+
+        if (this.channelMode === "left") {
+            const left = context.createGain();
+            left.gain.value = 1.0;
+            this.splitter.connect(left, 0);
+            splitted = left;
+
+        } else if (this.channelMode === "right") {
+            const right = context.createGain();
+            right.gain.value = 1.0;
+            this.splitter.connect(right, 1);
+            splitted = right;
+
         } else {
-            const gainL = audioContext.createGain();
-            const gainR = audioContext.createGain();
-            gainL.gain.value = 0.5;
-            gainR.gain.value = 0.5;
-
-            splitter.connect(gainL, 0);
-            splitter.connect(gainR, 1);
-            gainL.connect(merger, 0, 0);
-            gainR.connect(merger, 0, 0);
+            const stereoMerger = this.mergerStereo;
+            this.splitter.connect(stereoMerger, 0, 0); // L → L
+            this.splitter.connect(stereoMerger, 1, 1); // R → R
+            splitted = stereoMerger;
         }
 
-        return merger;
+        if (this.convertToMono) {
+            const mergerMono = this.mergerMono;
+            if (this.channelMode === "stereo") {
+                const gainL = context.createGain();
+                const gainR = context.createGain();
+                gainL.gain.value = 0.5;
+                gainR.gain.value = 0.5;
+
+                this.splitter.connect(gainL, 0);
+                this.splitter.connect(gainR, 1);
+                gainL.connect(mergerMono, 0, 0);
+                gainR.connect(mergerMono, 0, 0);
+                splitted = mergerMono;
+            } else {
+                splitted.connect(mergerMono, 0, 0);
+                splitted = mergerMono;
+            }
+        }
+
+        splitted.connect(this.gainNode);
+    }
+
+    initStream(stream) {
+        this.stream = stream;
+        this.source = this.audioContext.createMediaStreamSource(stream);
+        this.setupRouting();
+    }
+
+    initUI() {
+        this.channelRadios = this.domElement.querySelectorAll('[data-channel-mic]');
+        this.channelRadios.forEach((radio) => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.channelMode = e.target.value;
+                    this.setupRouting();
+                }
+            });
+        });
+
+        this.monoCheckbox = this.domElement.querySelector('[data-mono-mic]');
+        this.monoCheckbox.addEventListener('change', (e) => {
+            this.convertToMono = e.target.checked;
+            this.setupRouting();
+        });
+
+        this.gainSlider = this.domElement.querySelector('[data-gain-mic]');
+        this.gainValueDisplay = this.domElement.querySelector('[data-gain-mic-value]');
+        this.gainSlider.addEventListener('input', (e) => {
+            const gain = parseFloat(e.target.value);
+            this.gainNode.gain.value = gain;
+            if (this.gainValueDisplay) {
+                this.gainValueDisplay.textContent = (gain - 1).toFixed(2);
+            }
+        });
     }
 }

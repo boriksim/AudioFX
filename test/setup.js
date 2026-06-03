@@ -26,6 +26,34 @@ class MockAudioNode {
   }
 }
 
+class MockAnalyserNode extends MockAudioNode {
+  constructor(context) {
+    super(context, "AnalyserNode");
+    this._fftSize = 2048;
+  }
+  get fftSize() { return this._fftSize; }
+  set fftSize(v) { this._fftSize = v; }
+  get frequencyBinCount() { return this._fftSize / 2; }
+  getByteFrequencyData(array) {
+    for (let i = 0; i < array.length; i++) {
+      // A simple deterministic test pattern: sine wave in bin space.
+      array[i] = Math.floor(128 + 80 * Math.sin(i * 0.07));
+    }
+  }
+  getFloatTimeDomainData(array) {
+    for (let i = 0; i < array.length; i++) {
+      // A simple deterministic time-domain signal in [-1, 1].
+      array[i] = 0.7 * Math.sin(i * 0.05);
+    }
+  }
+  getByteTimeDomainData(array) {
+    for (let i = 0; i < array.length; i++) {
+      const v = 0.7 * Math.sin(i * 0.05);
+      array[i] = Math.max(0, Math.min(255, Math.floor((v + 1) * 127.5)));
+    }
+  }
+}
+
 function makeNodeFactory(type) {
   return class extends MockAudioNode {
     constructor(context, ...args) {
@@ -67,7 +95,7 @@ class MockAudioContext {
   createChannelSplitter(n) { return this._create("ChannelSplitterNode", n); }
   createChannelMerger(n) { return this._create("ChannelMergerNode", n); }
   createDynamicsCompressor() { return this._create("DynamicsCompressorNode"); }
-  createAnalyser() { return this._create("AnalyserNode"); }
+  createAnalyser() { return new MockAnalyserNode(this); }
   createOscillator() { return this._create("OscillatorNode"); }
   createMediaStreamSource(stream) {
     const node = this._create("MediaStreamSourceNode", stream);

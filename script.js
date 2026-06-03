@@ -4,6 +4,9 @@ import { InputMic } from "./effects/InputMic.js";
 import { DistortionEffect } from "./effects/DistortionEffect.js";
 import { LowpassEffect } from "./effects/LowpassEffect.js";
 import { DelayEffect } from "./effects/DelayEffect.js";
+import { AnalyserBus } from "./engine/AnalyserBus.js";
+import { SpectrumBars } from "./visualization/renderers/SpectrumBars.js";
+import { Waveform } from "./visualization/renderers/Waveform.js";
 
 /**
  * Build a registry pre-populated with the built-in effects. Each class
@@ -16,6 +19,45 @@ function buildRegistry() {
     .register(DistortionEffect)
     .register(LowpassEffect)
     .register(DelayEffect);
+}
+
+/**
+ * Wire the visualizer to the chain's last effect output. The bus owns
+ * one AnalyserNode per tap key; both renderers read from the same
+ * analyser using different methods (frequency vs time-domain).
+ */
+function setupVisualizer(audioContext, ecm) {
+  const canvas = document.getElementById("visualizer");
+  const modeSelect = document.getElementById("viz-mode");
+  const bus = new AnalyserBus(audioContext);
+
+  const lastEffect = ecm.effectChain[ecm.effectChain.length - 1].audioNode;
+  bus.attach("output", lastEffect.output);
+
+  let activeRenderer = null;
+
+  function setMode(mode) {
+    if (activeRenderer) {
+      bus.removeRenderer(activeRenderer);
+      activeRenderer = null;
+    }
+    if (mode === "off") {
+      const ctx2d = canvas.getContext("2d");
+      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+    const analyser = bus.get("output");
+    if (mode === "waveform") {
+      activeRenderer = new Waveform(canvas, analyser);
+    } else {
+      activeRenderer = new SpectrumBars(canvas, analyser);
+    }
+    bus.addRenderer(activeRenderer);
+  }
+
+  modeSelect.addEventListener("change", (e) => setMode(e.target.value));
+  setMode(modeSelect.value);
+  return bus;
 }
 
 /**
@@ -47,7 +89,12 @@ async function initAudio() {
   });
 
   const registry = buildRegistry();
-  const ecm = new EffectChainManager(audioContext, "#effects-container", registry);
+  const ecm = new EffectChainManager(
+    audioContext,
+    "#effects-container",
+    registry,
+    { useSchemaUI: true },
+  );
 
   const inputMic = (await ecm.addEffect("input-mic")).audioNode;
   inputMic.initStream(stream);
@@ -55,6 +102,8 @@ async function initAudio() {
   await ecm.addEffect("distortion");
   await ecm.addEffect("lowpass");
   await ecm.addEffect("delay");
+
+  setupVisualizer(audioContext, ecm);
 
   const latency = ecm.getLatency();
   console.log("Audio context state:", audioContext.state);
@@ -68,23 +117,25 @@ async function initAudio() {
   );
   console.log("Effect chain:", ecm.effectChain.map((e) => e.name));
   console.log("Available effects:", registry.list().map((m) => `${m.id}@${m.version}`).join(", "));
-  return { audioContext, ecm, registry };
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const button = document.createElement('button');
-  button.textContent = 'Start Audio';
-  button.style.cssText = 'padding: 10px 20px; margin: 20px; font-size: 16px;';
-  document.body.insertBefore(button, document.querySelector('.effects-container'));
+document.addEventListener("DOMContentLoaded", () => {
+  const button = document.createElement("button");
+  button.textContent = "Start Audio";
+  button.style.cssText = "padding: 10px 20px; margin: 20px; font-size: 16px;";
+  const viz = document.querySelector(".viz-panel");
+  const effects = document.querySelector(".effects-container");
+  if (viz) document.body.insertBefore(button, viz);
+  else if (effects) document.body.insertBefore(button, effects);
 
-  button.addEventListener('click', async () => {
+  button.addEventListener("click", async () => {
     try {
       await initAudio();
-      button.textContent = 'Audio Started';
+      button.textContent = "Audio Started";
       button.disabled = true;
     } catch (error) {
-      console.error('Error starting audio:', error);
-      button.textContent = 'Error - Click to retry';
+      console.error("Error starting audio:", error);
+      button.textContent = "Error - Click to retry";
       button.disabled = false;
     }
   });

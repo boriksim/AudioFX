@@ -11,25 +11,77 @@ h1 {
     margin-bottom: 20px;
 }
 
-.container {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-}
-
-.controls {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
 button {
     padding: 8px 16px;
     font-size: 16px;
     cursor: pointer;
 }
 
+.viz-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
 canvas {
     background: #222;
     border: 1px solid #555;
+    display: block;
+}
+
+.viz-controls {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.viz-controls select {
+    padding: 4px 8px;
+    font-size: 14px;
+    background: #222;
+    color: #fff;
+    border: 1px solid #555;
+}
+
+.effects-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+}
+
+.effect-instance {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 12px 16px;
+    min-width: 220px;
+}
+
+.effect-instance h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #aaa;
+}
+
+.effect-instance .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 8px 0;
+    font-size: 13px;
+}
+
+.effect-instance .field label {
+    color: #ccc;
+}
+
+.effect-instance .field .value {
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
 }

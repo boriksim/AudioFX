@@ -10,6 +10,8 @@
 <body>
     <h1>AudioFX Pedalboard</h1>
 
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
     <div class="viz-panel">
         <canvas id="visualizer" width="800" height="160"></canvas>
         <div class="viz-controls">
@@ -20,6 +22,19 @@
                 <option value="off">Off</option>
             </select>
         </div>
+    </div>
+
+    <div class="presets-panel">
+        <div class="presets-controls">
+            <input type="text" id="preset-name" placeholder="Preset name" maxlength="64" />
+            <button id="save-preset" type="button">Save preset</button>
+            <button id="export-project" type="button">Export .audiofx.json</button>
+            <label class="file-button">
+                Import…
+                <input id="import-project" type="file" accept="application/json,.json" hidden />
+            </label>
+        </div>
+        <ul id="presets-list" class="presets-list"></ul>
     </div>
 
     <div class="effects-container" id="effects-container"></div>

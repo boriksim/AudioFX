@@ -7,6 +7,14 @@ import { DelayEffect } from "./effects/DelayEffect.js";
 import { AnalyserBus } from "./engine/AnalyserBus.js";
 import { SpectrumBars } from "./visualization/renderers/SpectrumBars.js";
 import { Waveform } from "./visualization/renderers/Waveform.js";
+import { PresetManagerUI } from "./ui/PresetManager.js";
+
+function setStatus(msg, kind = "info") {
+  const el = document.getElementById("status");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle("error", kind === "error");
+}
 
 /**
  * Build a registry pre-populated with the built-in effects. Each class
@@ -105,6 +113,9 @@ async function initAudio() {
 
   setupVisualizer(audioContext, ecm);
 
+  const presetUI = new PresetManagerUI(ecm);
+  presetUI.onStatus((msg, kind) => setStatus(msg, kind));
+
   const latency = ecm.getLatency();
   console.log("Audio context state:", audioContext.state);
   console.log("Sample rate:", audioContext.sampleRate, "Hz");
@@ -133,10 +144,12 @@ document.addEventListener("DOMContentLoaded", () => {
       await initAudio();
       button.textContent = "Audio Started";
       button.disabled = true;
+      setStatus("Audio started");
     } catch (error) {
       console.error("Error starting audio:", error);
       button.textContent = "Error - Click to retry";
       button.disabled = false;
+      setStatus(`Audio failed: ${error.message}`, "error");
     }
   });
 });

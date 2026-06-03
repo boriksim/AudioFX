@@ -15,7 +15,7 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 219 passing across 21 test files.
+- **Last known good test count:** 239 passing across 22 test files.
   (Updated at the top of every commit.)
 
 ---
@@ -78,17 +78,21 @@ then resume the next-steps section below.**
   data: `e.position = {x, y}` (persisted). Manager API: `addEffect(id,
   {position})`. PatchboardUI wraps `ecm.onChange` (save-and-restore
   on destroy) so it never overwrites upstream hooks.
+- **Phase 4c — Multi-port effects:** `effects/ChannelSplitter.js`
+  (1 input, 2 output ports `L` and `R`). `AbstractAudioNode` port
+  API is the contract: `getInputPorts()`, `getOutputPorts()`,
+  `getInputNode(portId)`, `getOutputNode(portId)`. Default
+  implementation returns `[{id: "in"}]` and `[{id: "out"}]`. The
+  manager's `_chainOrderConnection(i)` uses the first declared
+  port of multi-port nodes (so a ChannelSplitter's L port is the
+  chain-order source for the next effect). `connect()` /
+  `_isChainConnection` use the same logic. `PatchboardUI._renderPorts`
+  renders one port dot per declared port, stacked vertically when
+  more than one.
 
 ---
 
 ## Open / upcoming work
-
-### Phase 4c — Multi-port effects
-Add a `ChannelSplitter` effect that declares `manifest.outputs =
-[{id: "L"}, {id: "R"}]` so two parallel chains can be patched
-from a single source. Verify the existing `PatchboardUI` correctly
-renders a card with two output ports and the wire layer lays out
-cleanly.
 
 ### Phase 5 — Profiling & docs
 `engine/Profiler.js` (per-node CPU time, render quantum histogram,
@@ -150,6 +154,14 @@ drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
   input port on the left and an output port on the right.
   Drag-to-wire creates explicit connections; clicking a wire
   disconnects it. `Delete`/`Backspace` removes the selected card.
+- **Multi-port effects (Phase 4c):** effects override
+  `getInputPorts()` / `getOutputPorts()` to declare port lists
+  (default `[{id: "in"}]` / `[{id: "out"}]`). The manager's
+  `_chainOrderConnection(i)` uses the FIRST declared port of
+  multi-port nodes. `_isChainConnection` matches the same logic
+  so explicit `connect()` calls don't duplicate chain order.
+  The PatchboardUI renders one port dot per declared port,
+  stacked vertically for multi-port cards.
 
 ---
 
@@ -182,7 +194,7 @@ drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 219/219 baseline.
+6. `npx vitest run` — confirm 239/239 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.

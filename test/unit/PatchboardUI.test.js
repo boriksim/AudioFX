@@ -16,6 +16,7 @@ import { PluginRegistry } from "../../core/PluginRegistry.js";
 import { InputMic } from "../../effects/InputMic.js";
 import { DistortionEffect } from "../../effects/DistortionEffect.js";
 import { DelayEffect } from "../../effects/DelayEffect.js";
+import ChannelSplitter from "../../effects/ChannelSplitter.js";
 
 describe("PatchboardUI", () => {
   let ctx, container, ecm, ui;
@@ -28,7 +29,8 @@ describe("PatchboardUI", () => {
     const registry = new PluginRegistry()
       .register(InputMic)
       .register(DistortionEffect)
-      .register(DelayEffect);
+      .register(DelayEffect)
+      .register(ChannelSplitter);
     ecm = new EffectChainManager(ctx, "#board", registry, { useSchemaUI: true });
     // Add two effects to the chain (mic + delay) so the UI has cards.
     await ecm.addEffect("input-mic", { position: { x: 40, y: 40 } });
@@ -160,5 +162,67 @@ describe("PatchboardUI", () => {
     const values = [...select.querySelectorAll("option")].map((o) => o.value);
     expect(values).toContain("distortion");
     expect(values).toContain("input-mic");
+  });
+});
+
+describe("PatchboardUI multi-port (Phase 4c)", () => {
+  let ctx, container, ecm, ui;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="board"></div>';
+    container = document.getElementById("board");
+    ctx = new AudioContext();
+    globalThis.fetch = () => Promise.resolve({ text: () => Promise.resolve("<div>x</div>") });
+    const registry = new PluginRegistry()
+      .register(InputMic)
+      .register(DistortionEffect)
+      .register(ChannelSplitter);
+    ecm = new EffectChainManager(ctx, "#board", registry, { useSchemaUI: true });
+    await ecm.addEffect("input-mic");
+    await ecm.addEffect("channel-splitter");
+    await ecm.addEffect("distortion");
+    ui = new PatchboardUI(ecm, { container });
+  });
+
+  it("renders two output port dots on a ChannelSplitter card (L and R)", () => {
+    const splitter = ecm.effectChain[1];
+    const outs = splitter.dom.querySelectorAll(".pb-port-out");
+    expect(outs.length).toBe(2);
+    const ids = [...outs].map((el) => el.dataset.portId);
+    expect(ids).toContain("L");
+    expect(ids).toContain("R");
+  });
+
+  it("does not stack port dots on a single-port effect", () => {
+    const distortion = ecm.effectChain[2];
+    const outs = distortion.dom.querySelectorAll(".pb-port-out");
+    expect(outs.length).toBe(1);
+    expect(outs[0].dataset.portId).toBe("out");
+  });
+
+  it("draws a wire from the splitter's default output to the next effect's input", () => {
+    // Chain order: mic -> splitter -> distortion. Two chain-order
+    // wires. The splitter's L port is the source for the second
+    // (chain order uses the first declared output port for multi-port
+    // nodes).
+    const wires = container.querySelectorAll(".pb-wire");
+    expect(wires.length).toBe(2);
+    // The wire from the splitter to the distortion uses the L port.
+    const lPortOut = ecm.effectChain[1].dom.querySelector('.pb-port-out[data-port-id="L"]');
+    expect(lPortOut).toBeTruthy();
+  });
+
+  it("draws an extra wire when an explicit L-port connection is added", async () => {
+    const splitterId = ecm.effectChain[1].id;
+    // Add a third effect (distortion #2) to give the L port a target.
+    await ecm.addEffect("distortion");
+    const target = ecm.effectChain[3];
+    // Chain order: mic -> splitter -> distortion1 -> distortion2 = 3 wires.
+    expect(container.querySelectorAll(".pb-wire").length).toBe(3);
+    const ok = ecm.connect(splitterId, target.id, { fromPort: "L", toPort: "in" });
+    expect(ok).toBe(true);
+    // 3 chain-order wires + 1 explicit L wire = 4 wires.
+    const wires = container.querySelectorAll(".pb-wire");
+    expect(wires.length).toBe(4);
   });
 });

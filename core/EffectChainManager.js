@@ -240,13 +240,15 @@ export class EffectChainManager {
 
   /**
    * True if `(fromId, fromPort) -> (toId, toPort)` is the default
-   * chain-order connection (only the head-to-tail `out -> in` pairs
-   * for adjacent chain members).
+   * chain-order connection for the given pair of adjacent chain
+   * members. Multi-port nodes use their first declared port for
+   * chain-order, so the comparison uses the same logic as
+   * `_chainOrderConnection`.
    */
   _isChainConnection(fromId, toId, fromPort, toPort) {
-    if (fromPort !== "out" || toPort !== "in") return false;
     for (let i = 0; i < this.effectChain.length - 1; i++) {
-      if (this.effectChain[i].id === fromId && this.effectChain[i + 1].id === toId) {
+      const c = this._chainOrderConnection(i);
+      if (c && c.from === fromId && c.to === toId && c.fromPort === fromPort && c.toPort === toPort) {
         return true;
       }
     }
@@ -285,6 +287,27 @@ export class EffectChainManager {
   }
 
   /**
+   * Return the chain-order connection at position `i` (i.e. from
+   * chain[i] to chain[i+1]). The output port id is the first
+   * declared output port of the source, falling back to "out" if
+   * the effect doesn't expose `getOutputPorts()`. The input port id
+   * is the first declared input port of the destination, with the
+   * same fallback. This makes chain-order work uniformly for
+   * multi-port effects (e.g. a ChannelSplitter with L/R outputs
+   * routes its L port to the next effect's first input port).
+   *
+   * @returns {{from: string, fromPort: string, to: string, toPort: string}|null}
+   */
+  _chainOrderConnection(i) {
+    if (i < 0 || i >= this.effectChain.length - 1) return null;
+    const a = this.effectChain[i];
+    const b = this.effectChain[i + 1];
+    const fromPort = a.audioNode?.getOutputPorts?.()?.[0]?.id ?? "out";
+    const toPort = b.audioNode?.getInputPorts?.()?.[0]?.id ?? "in";
+    return { from: a.id, fromPort, to: b.id, toPort };
+  }
+
+  /**
    * Disconnect every effect, then rewire the graph from the
    * connection list. Effective connections = chain-order connections
    * (chain[i] -> chain[i+1] for all i) plus any explicit `connections`.
@@ -309,10 +332,8 @@ export class EffectChainManager {
     const effective = new Map(); // key -> {fromId, fromPort, toId, toPort}
     const keyOf = (c) => `${c.from}|${c.fromPort}|${c.to}|${c.toPort}`;
     for (let i = 0; i < this.effectChain.length - 1; i++) {
-      const a = this.effectChain[i];
-      const b = this.effectChain[i + 1];
-      const c = { from: a.id, fromPort: "out", to: b.id, toPort: "in" };
-      effective.set(keyOf(c), c);
+      const c = this._chainOrderConnection(i);
+      if (c) effective.set(keyOf(c), c);
     }
     for (const c of this.connections) {
       effective.set(keyOf(c), c);

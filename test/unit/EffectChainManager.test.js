@@ -245,6 +245,49 @@ describe("EffectChainManager", () => {
       expect(manager.getConnections()).toEqual([]);
     });
 
+    it("_chainOrderConnection uses the first declared output port for multi-port sources", () => {
+      // Replace makeMockEffect's getOutputPorts default to simulate
+      // a multi-port node (e.g. ChannelSplitter with L/R outputs).
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      a.audioNode.getOutputPorts = () => [{ id: "L" }, { id: "R" }];
+      manager.effectChain.push(a, b);
+      const c = manager._chainOrderConnection(0);
+      expect(c).toEqual({ from: a.id, fromPort: "L", to: b.id, toPort: "in" });
+    });
+
+    it("_chainOrderConnection uses the first declared input port for multi-port destinations", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      b.audioNode.getInputPorts = () => [{ id: "main" }, { id: "aux" }];
+      manager.effectChain.push(a, b);
+      const c = manager._chainOrderConnection(0);
+      expect(c).toEqual({ from: a.id, fromPort: "out", to: b.id, toPort: "main" });
+    });
+
+    it("_chainOrderConnection falls back to out/in when ports aren't declared", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      // Remove the methods to simulate a node that doesn't expose them.
+      delete a.audioNode.getOutputPorts;
+      delete b.audioNode.getInputPorts;
+      manager.effectChain.push(a, b);
+      const c = manager._chainOrderConnection(0);
+      expect(c).toEqual({ from: a.id, fromPort: "out", to: b.id, toPort: "in" });
+    });
+
+    it("connect() treats a multi-port chain-order as not-already-covered", () => {
+      // A ChannelSplitter's L port is the chain-order source for the
+      // next effect. An explicit connect(splitter, next, {fromPort: "L"})
+      // should return false (chain order already covers it).
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      a.audioNode.getOutputPorts = () => [{ id: "L" }, { id: "R" }];
+      manager.effectChain.push(a, b);
+      expect(manager.connect(a.id, b.id, { fromPort: "L", toPort: "in" })).toBe(false);
+      expect(manager.getConnections()).toEqual([]);
+    });
+
     it("multi-input summing: a summer GainNode is inserted for fan-in", () => {
       const a = makeMockEffect("A");
       const b = makeMockEffect("B");

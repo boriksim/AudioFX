@@ -266,35 +266,52 @@ export class PatchboardUI {
       }
     }
 
-    // Port dots. Each card has an output port on the right and an
-    // input port on the left. Sources have no input port; sinks
-    // have no output port. The manager's addEffect adds nodes in
-    // the right order, but for the patchboard we use the effect's
-    // manifest to decide.
+    // Port dots. Each card has one dot per declared input/output port.
+    // The effect's `getInputPorts()` / `getOutputPorts()` returns the
+    // port list; multi-port effects (e.g. ChannelSplitter with L/R
+    // outputs) render multiple dots stacked vertically along the
+    // card's edges. Sources have no input port (PatchboardUI infers
+    // this from the manifest id, since mic/file/oscillator don't
+    // expose an upstream feed).
     const effectObj = this.ecm.effectChain.find((e) => e.dom === card);
-    if (effectObj && !card.querySelector(".pb-port-out")) {
-      const out = document.createElement("div");
-      out.className = "pb-port pb-port-out";
-      out.dataset.portRole = "output";
-      out.dataset.effectId = effectObj.id;
-      out.dataset.portId = "out";
-      out.title = "Output";
-      card.appendChild(out);
-    }
-    if (effectObj && !card.querySelector(".pb-port-in") && !this._isSource(effectObj)) {
-      const inp = document.createElement("div");
-      inp.className = "pb-port pb-port-in";
-      inp.dataset.portRole = "input";
-      inp.dataset.effectId = effectObj.id;
-      inp.dataset.portId = "in";
-      inp.title = "Input";
-      card.appendChild(inp);
-    }
+    if (!effectObj) return;
+    const audioNode = effectObj.audioNode;
+    const inputPorts = this._isSource(effectObj)
+      ? []
+      : (typeof audioNode?.getInputPorts === "function" ? audioNode.getInputPorts() : [{ id: "in" }]);
+    const outputPorts = typeof audioNode?.getOutputPorts === "function" ? audioNode.getOutputPorts() : [{ id: "out" }];
+    this._renderPorts(card, effectObj, "in", inputPorts);
+    this._renderPorts(card, effectObj, "out", outputPorts);
   }
 
   _isSource(effectObj) {
     const id = effectObj.manifestId;
     return id === "input-mic" || id === "input-file" || id === "input-oscillator";
+  }
+
+  _renderPorts(card, effectObj, role, ports) {
+    if (!ports || ports.length === 0) return;
+    const existing = card.querySelectorAll(`.pb-port-${role === "in" ? "in" : "out"}`);
+    // For multi-port cards, rebuild the port list each sync. For
+    // single-port cards, the existing one is fine.
+    if (existing.length === ports.length) return;
+    for (const el of existing) el.remove();
+    const isInput = role === "in";
+    ports.forEach((port, i) => {
+      const dot = document.createElement("div");
+      dot.className = `pb-port ${isInput ? "pb-port-in" : "pb-port-out"}`;
+      dot.dataset.portRole = isInput ? "input" : "output";
+      dot.dataset.effectId = effectObj.id;
+      dot.dataset.portId = port.id;
+      dot.title = port.id;
+      // Vertical position. Centered for single port; evenly spaced
+      // for multiple.
+      const top = ports.length === 1
+        ? "50%"
+        : `${20 + (i * 60) / Math.max(1, ports.length - 1)}%`;
+      dot.style.top = top;
+      card.appendChild(dot);
+    });
   }
 
   _applyPositions() {
@@ -465,14 +482,14 @@ export class PatchboardUI {
     for (const e of this.ecm.effectChain) nodeById.set(e.id, e);
 
     // Build the effective connection set (chain order + explicit).
+    // Use the manager's `_chainOrderConnection` so the same port
+    // ids are used here as in the audio wiring (important for
+    // multi-port effects where the first output port is the default
+    // for chain order).
     const effective = [];
     for (let i = 0; i < this.ecm.effectChain.length - 1; i++) {
-      effective.push({
-        from: this.ecm.effectChain[i].id,
-        fromPort: "out",
-        to: this.ecm.effectChain[i + 1].id,
-        toPort: "in",
-      });
+      const c = this.ecm._chainOrderConnection(i);
+      if (c) effective.push(c);
     }
     for (const c of this.ecm.connections) effective.push(c);
 

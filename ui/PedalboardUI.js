@@ -29,6 +29,7 @@ export class PedalboardUI {
     }
     this.registry = ecm.registry;
     this._installPicker(dom.addPicker);
+    this._resolveSourceActions = dom.resolveSourceActions ?? null;
     this._unsubscribe = ecm.onChange
       ? null // we wrap this below
       : null;
@@ -166,6 +167,14 @@ export class PedalboardUI {
       const form = card.querySelector("form.schema-form");
       if (form) card.insertBefore(wrap, form);
       else card.appendChild(wrap);
+    }
+
+    // Source-specific action bar (file picker for InputFile, etc.).
+    if (typeof this._resolveSourceActions === "function") {
+      const actions = this._resolveSourceActions(card);
+      if (actions && !card.querySelector(".source-actions")) {
+        card.appendChild(actions);
+      }
     }
   }
 

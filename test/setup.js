@@ -54,6 +54,33 @@ class MockAnalyserNode extends MockAudioNode {
   }
 }
 
+class MockOscillatorNode extends MockAudioNode {
+  constructor(context) {
+    super(context, "OscillatorNode");
+    this.type = "sine";
+    this.frequency = new MockAudioParam(440);
+    this._started = false;
+  }
+  start() { this._started = true; }
+  stop() { this._started = false; }
+  setType(t) { this.type = t; }
+}
+
+class MockBufferSourceNode extends MockAudioNode {
+  constructor(context) {
+    super(context, "BufferSourceNode");
+    this.buffer = null;
+    this.loop = false;
+    this.loopStart = 0;
+    this.loopEnd = 0;
+    this.playbackRate = new MockAudioParam(1);
+    this.onended = null;
+    this._started = false;
+  }
+  start() { this._started = true; }
+  stop() { this._started = false; }
+}
+
 function makeNodeFactory(type) {
   return class extends MockAudioNode {
     constructor(context, ...args) {
@@ -96,7 +123,8 @@ class MockAudioContext {
   createChannelMerger(n) { return this._create("ChannelMergerNode", n); }
   createDynamicsCompressor() { return this._create("DynamicsCompressorNode"); }
   createAnalyser() { return new MockAnalyserNode(this); }
-  createOscillator() { return this._create("OscillatorNode"); }
+  createOscillator() { return new MockOscillatorNode(this); }
+  createBufferSource() { return new MockBufferSourceNode(this); }
   createMediaStreamSource(stream) {
     const node = this._create("MediaStreamSourceNode", stream);
     node.stream = stream;

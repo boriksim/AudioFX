@@ -14,6 +14,8 @@ import { serializeProject, deserializeProject } from "./persistence/project.js";
 import { DistortionCurve } from "./visualization/perEffect/DistortionCurve.js";
 import { BiquadResponse } from "./visualization/perEffect/BiquadResponse.js";
 import { DelayImpulse } from "./visualization/perEffect/DelayImpulse.js";
+import { InputFile } from "./effects/InputFile.js";
+import { InputOscillator } from "./effects/InputOscillator.js";
 
 /**
  * Per-effect live visualization factories, keyed by manifest id.
@@ -41,6 +43,8 @@ function setStatus(msg, kind = "info") {
 function buildRegistry() {
   return new PluginRegistry()
     .register(InputMic)
+    .register(InputFile)
+    .register(InputOscillator)
     .register(DistortionEffect)
     .register(LowpassEffect)
     .register(DelayEffect);
@@ -168,7 +172,14 @@ async function initAudio() {
 
   setupVisualizer(audioContext, ecm);
 
-  const pedalboard = new PedalboardUI(ecm);
+  const pedalboard = new PedalboardUI(ecm, {
+    resolveSourceActions: (card) => {
+      const effectObj = ecm.effectChain.find((e) => e.dom === card);
+      if (!effectObj) return null;
+      const fn = effectObj.audioNode?.renderSourceActions;
+      return typeof fn === "function" ? fn.call(effectObj.audioNode) : null;
+    },
+  });
 
   const presetUI = new PresetManagerUI(ecm);
   presetUI.onStatus((msg, kind) => setStatus(msg, kind));

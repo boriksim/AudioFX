@@ -231,8 +231,41 @@ canvas {
 }
 
 .pe-viz canvas {
-    width: 100%;
-    height: 80px;
-    background: #161616;
-    border: 1px solid #2a2a2a;
+  width: 100%;
+  height: 80px;
+  display: block;
+  background: #0c0c10;
+  border-bottom: 1px solid #1f1f29;
 }
+
+/* Source-specific action bar (file picker for InputFile, etc.). */
+.source-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #1f1f29;
+  background: #13131a;
+  flex-wrap: wrap;
+}
+.source-actions .src-file {
+  flex: 1 1 180px;
+  font-size: 12px;
+  color: #cfcfdc;
+}
+.source-actions .src-play {
+  background: #2a2a3a;
+  color: #cfcfdc;
+  border: 1px solid #3a3a4a;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.source-actions .src-play:hover { background: #34344a; }
+.source-actions .src-status {
+  font-size: 12px;
+  color: #8a8a9a;
+  flex: 1 1 100%;
+}
+

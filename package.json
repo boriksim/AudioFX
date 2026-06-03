@@ -1,0 +1,18 @@
+{
+  "name": "audiofx",
+  "version": "0.1.0",
+  "description": "Browser-based modular audio effects pedalboard",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "start": "node scripts/dev-server.js",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "jsdom": "^25.0.0"
+  }
+}

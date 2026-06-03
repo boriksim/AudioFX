@@ -5,6 +5,7 @@ import {
   serializeProject,
   deserializeProject,
   validateProject,
+  migrateProject,
   PROJECT_FORMAT,
   PROJECT_SCHEMA,
 } from "../../persistence/project.js";
@@ -53,7 +54,7 @@ describe("validateProject", () => {
         formatVersion: 99,
         graph: { nodes: [], connections: [] },
       })
-    ).toThrow(/only understands up to 1/);
+    ).toThrow(/only understands up to 2/);
   });
 
   it("rejects when nodes is not an array", () => {
@@ -101,17 +102,81 @@ describe("serializeProject", () => {
     expect(doc.graph.nodes[0].params.type).toBe("hard");
   });
 
-  it("emits one connection per adjacent pair in chain order", async () => {
+  it("does not emit chain-order connections (they're derived at load time)", async () => {
     const m = makeManager(makeRegistry());
     await m.addEffect("distortion");
     await m.addEffect("lowpass");
     await m.addEffect("delay");
     const doc = serializeProject(m);
-    const ids = doc.graph.nodes.map((n) => n.id);
+    // Only explicit (non-chain-order) connections are stored.
+    expect(doc.graph.connections).toEqual([]);
+  });
+
+  it("emits explicit non-chain-order connections", async () => {
+    const m = makeManager(makeRegistry());
+    await m.addEffect("distortion");
+    await m.addEffect("lowpass");
+    await m.addEffect("delay");
+    // Add an explicit sidechain connection.
+    m.connect(m.effectChain[0].id, m.effectChain[2].id, {
+      fromPort: "out",
+      toPort: "sidechain",
+    });
+    const doc = serializeProject(m);
     expect(doc.graph.connections).toEqual([
-      { from: ids[0], to: ids[1] },
-      { from: ids[1], to: ids[2] },
+      { from: m.effectChain[0].id, to: m.effectChain[2].id, fromPort: "out", toPort: "sidechain" },
     ]);
+  });
+
+  it("v1 -> v2 migration: nodes get default positions, connections get default ports", () => {
+    const v1 = {
+      format: "audiofx.project",
+      formatVersion: 1,
+      schema: 1,
+      name: "old",
+      graph: {
+        nodes: [
+          { id: "n1", type: "distortion@1.0.0", params: {} },
+          { id: "n2", type: "lowpass@1.0.0", params: {} },
+        ],
+        connections: [
+          { from: "n1", to: "n2" },
+        ],
+      },
+    };
+    const migrated = migrateProject(v1);
+    expect(migrated.formatVersion).toBe(2);
+    expect(migrated.schema).toBe(2);
+    expect(migrated.graph.nodes[0].position).toEqual({ x: 0, y: 0 });
+    expect(migrated.graph.nodes[1].position).toEqual({ x: 0, y: 120 });
+    expect(migrated.graph.connections[0]).toEqual({
+      from: "n1", to: "n2", fromPort: "out", toPort: "in",
+    });
+  });
+
+  it("deserializeProject auto-migrates a v1 project into a v2 manager", async () => {
+    const v1 = {
+      format: "audiofx.project",
+      formatVersion: 1,
+      schema: 1,
+      name: "old",
+      graph: {
+        nodes: [
+          { id: "n1", type: "distortion@1.0.0", params: { mix: 0.5 } },
+          { id: "n2", type: "lowpass@1.0.0", params: { frequency: 800 } },
+        ],
+        connections: [{ from: "n1", to: "n2" }],
+      },
+    };
+    const target = makeManager(makeRegistry());
+    const { skipped } = await deserializeProject(v1, target);
+    expect(skipped).toEqual([]);
+    expect(target.effectChain).toHaveLength(2);
+    // The position from the v1->v2 migration should be applied.
+    expect(target.effectChain[0].position).toEqual({ x: 0, y: 0 });
+    expect(target.effectChain[1].position).toEqual({ x: 0, y: 120 });
+    // Params are restored.
+    expect(target.effectChain[0].audioNode.getConfig().mix).toBe(0.5);
   });
 });
 

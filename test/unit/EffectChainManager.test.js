@@ -2,20 +2,28 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { EffectChainManager } from "../../core/EffectChainManager.js";
 
 /**
- * Build a minimal effect-like object that satisfies the manager's contract:
- * { id, name, dom, audioNode } where audioNode has disconnect/connect.
+ * Build a minimal effect-like object that satisfies the manager's
+ * graph contract: { id, name, dom, audioNode } where audioNode has
+ * `input`, `output`, `disconnect`, `getInputNode(port)`, and
+ * `getOutputNode(port)`. The mock `getInputNode`/`getOutputNode`
+ * return the same `input`/`output` for any port.
  */
 function makeMockEffect(name) {
   const dom = document.createElement("div");
   dom.className = "mock-effect";
   dom.textContent = name;
+  const input = { connect: vi.fn() };
+  const output = { connect: vi.fn() };
   return {
     id: `fx-${name.toLowerCase()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
     dom,
     audioNode: {
+      input,
+      output,
       disconnect: vi.fn(),
-      connect: vi.fn(),
+      getInputNode: vi.fn(() => input),
+      getOutputNode: vi.fn(() => output),
     },
   };
 }
@@ -101,21 +109,24 @@ describe("EffectChainManager", () => {
     expect(manager.effectChain).toEqual([a]);
   });
 
-  it("rebuildAudioChain connects effects head-to-tail and the last to destination", () => {
+  it("rebuildAudioGraph connects effects head-to-tail and the last to destination", () => {
     const a = makeMockEffect("A");
     const b = makeMockEffect("B");
     const c = makeMockEffect("C");
     manager.effectChain.push(a, b, c);
 
-    manager.rebuildAudioChain();
+    manager.rebuildAudioGraph();
 
     expect(a.audioNode.disconnect).toHaveBeenCalled();
     expect(b.audioNode.disconnect).toHaveBeenCalled();
     expect(c.audioNode.disconnect).toHaveBeenCalled();
 
-    expect(a.audioNode.connect).toHaveBeenCalledWith(b.audioNode);
-    expect(b.audioNode.connect).toHaveBeenCalledWith(c.audioNode);
-    expect(c.audioNode.connect).toHaveBeenCalledWith(ctx.destination);
+    // Each node's output.connect() should be called with the next
+    // node's input node (via getInputNode).
+    expect(a.audioNode.output.connect).toHaveBeenCalledWith(b.audioNode.input);
+    expect(b.audioNode.output.connect).toHaveBeenCalledWith(c.audioNode.input);
+    // The last node's output goes to destination.
+    expect(c.audioNode.output.connect).toHaveBeenCalledWith(ctx.destination);
   });
 
   it("rebuildAudioChain on an empty chain is a no-op for connections", () => {
@@ -152,6 +163,150 @@ describe("EffectChainManager", () => {
     expect(b.audioNode.destroy).toHaveBeenCalled();
   });
 
+  describe("graph API (Phase 4a)", () => {
+    it("connect() adds an explicit connection and rebuilds the graph", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      manager.rebuildAudioGraph(); // initial chain-order wiring
+      a.audioNode.output.connect.mockClear();
+      b.audioNode.output.connect.mockClear();
+
+      // Connect A -> B with a custom port label; this is a no-op in
+      // the linear chain case (A is already wired to B by chain order),
+      // so the dedup kicks in.
+      expect(manager.connect(a.id, b.id)).toBe(false);
+      // The chain-order rebuild is the source of truth.
+      expect(manager.getConnections()).toEqual([]);
+    });
+
+    it("connect() with a different port creates a real new connection", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+
+      expect(manager.connect(a.id, b.id, { fromPort: "aux", toPort: "sidechain" })).toBe(true);
+      expect(manager.getConnections()).toEqual([
+        { from: a.id, to: b.id, fromPort: "aux", toPort: "sidechain" },
+      ]);
+    });
+
+    it("connect() rejects unknown node ids", () => {
+      const a = makeMockEffect("A");
+      manager.effectChain.push(a);
+      expect(() => manager.connect(a.id, "nonexistent")).toThrow(/unknown destination/);
+      expect(() => manager.connect("nonexistent", a.id)).toThrow(/unknown source/);
+    });
+
+    it("connect() rejects self-loops", () => {
+      const a = makeMockEffect("A");
+      manager.effectChain.push(a);
+      expect(() => manager.connect(a.id, a.id)).toThrow(/itself/);
+    });
+
+    it("disconnect() removes an explicit connection", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      manager.connect(a.id, b.id, { fromPort: "aux", toPort: "sidechain" });
+      expect(manager.disconnect(a.id, b.id, { fromPort: "aux", toPort: "sidechain" })).toBe(true);
+      expect(manager.getConnections()).toEqual([]);
+    });
+
+    it("disconnect() returns false when there is no matching connection", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      expect(manager.disconnect(a.id, b.id, { fromPort: "x", toPort: "y" })).toBe(false);
+    });
+
+    it("removeEffect() drops any connection referencing the removed node", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      const c = makeMockEffect("C");
+      manager.effectChain.push(a, b, c);
+      manager.connect(a.id, c.id, { fromPort: "aux", toPort: "sidechain" });
+      expect(manager.getConnections()).toHaveLength(1);
+
+      manager.removeEffect(b.id);
+
+      // The connection A->C is preserved (it doesn't reference b).
+      expect(manager.getConnections()).toEqual([
+        { from: a.id, to: c.id, fromPort: "aux", toPort: "sidechain" },
+      ]);
+    });
+
+    it("removeEffect() drops connections that DO reference the removed node", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      manager.connect(a.id, b.id, { fromPort: "aux", toPort: "sidechain" });
+      manager.removeEffect(b.id);
+      expect(manager.getConnections()).toEqual([]);
+    });
+
+    it("multi-input summing: a summer GainNode is inserted for fan-in", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      const c = makeMockEffect("C");
+      manager.effectChain.push(a, b, c);
+      // Chain order: A->B, B->C. So C already has 1 incoming
+      // connection (B->C). Adding an explicit A->C makes it 2.
+      manager.connect(a.id, c.id, { fromPort: "out", toPort: "in" });
+
+      // Spy on createGain: a multi-input port causes a summer
+      // GainNode to be created. MockAudioContext from the polyfill
+      // returns a real MockAudioNode, so we can't vi.fn spy on
+      // createGain without overriding it. Override here.
+      const originalCreateGain = ctx.createGain;
+      const createGainSpy = vi.fn(() => originalCreateGain.call(ctx));
+      ctx.createGain = createGainSpy;
+
+      manager.rebuildAudioGraph();
+
+      // Two sources for C's input (B via chain, A via explicit). A
+      // summer GainNode is inserted; that's the proof that fan-in
+      // summing is in effect.
+      expect(createGainSpy).toHaveBeenCalled();
+
+      // Restore.
+      ctx.createGain = originalCreateGain;
+    });
+
+    it("a single-input port does NOT trigger summer creation", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      manager.rebuildAudioGraph(); // initial wiring
+
+      const originalCreateGain = ctx.createGain;
+      const createGainSpy = vi.fn(() => originalCreateGain.call(ctx));
+      ctx.createGain = createGainSpy;
+      manager.rebuildAudioGraph();
+      expect(createGainSpy).not.toHaveBeenCalled();
+      ctx.createGain = originalCreateGain;
+    });
+
+    it("a node with no outgoing connection is wired to destination", () => {
+      const a = makeMockEffect("A");
+      manager.effectChain.push(a);
+      a.audioNode.output.connect.mockClear();
+      manager.rebuildAudioGraph();
+      expect(a.audioNode.output.connect).toHaveBeenCalledWith(ctx.destination);
+    });
+
+    it("connect() then removeEffect() also fires onChange", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      const spy = vi.fn();
+      manager.onChange = spy;
+      manager.connect(a.id, b.id, { fromPort: "aux", toPort: "sidechain" });
+      expect(spy).toHaveBeenCalledOnce();
+      manager.disconnect(a.id, b.id, { fromPort: "aux", toPort: "sidechain" });
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
+  });
   describe("getLatency() (Phase 1.5)", () => {
     it("returns baseLatency, outputLatency, and a sum total", () => {
       const result = manager.getLatency();

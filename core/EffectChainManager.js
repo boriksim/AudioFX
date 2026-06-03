@@ -1,70 +1,67 @@
-// EffectChainManager: manages a linear chain of audio effects.
-// Supports adding, removing, moving, and rebuilding the audio chain.
-// Each effect ships its own HTML template and JS module; the manager
-// orchestrates loading, DOM mounting, and graph wiring.
+// EffectChainManager: a graph-based audio-graph manager.
 //
-// As of Phase 2a, the manager optionally accepts a PluginRegistry. When
-// a registry is provided, `addEffect(id)` resolves the effect by its
-// manifest id (the canonical identifier used in serialization), and the
-// HTML template path is read from `manifest.assets.html`. Without a
-// registry the manager falls back to the legacy "id is the class name
-// and the file basename" behavior.
+// As of Phase 4a, the manager is no longer a strictly linear chain.
+// It now supports arbitrary connections between any two nodes (any
+// output port to any input port), with automatic multi-input summing
+// via per-port GainNodes. The original chain-order API (addEffect,
+// removeEffect, moveEffect, clear) is preserved as a convenience: it
+// auto-maintains the head-to-tail connection list and the DOM order.
 //
-// As of Phase 2b, the manager can also render effect UI from the
-// effect's own `getConfigSchema()` instead of an HTML template. Pass
-// `useSchemaUI: true` to the constructor to switch the whole chain to
-// schema-driven rendering. This coexists with the HTML path; effects
-// without a schema simply render an empty body.
+// Connections are explicit: `connect(from, to, opts)` and
+// `disconnect(from, to, opts)`. The chain-order connections are
+// always added on top of any explicit connections, so the simplest
+// case ("just a linear chain") still works without ever calling
+// `connect()` explicitly.
+//
+// As of Phase 2a, the manager optionally accepts a PluginRegistry.
+// As of Phase 2b, it can render effect UI from `getConfigSchema()`.
 
 export class EffectChainManager {
   /**
    * @param {AudioContext} audioContext
-   * @param {string} containerSelector - CSS selector for the DOM container
-   *   that holds effect UI cards.
-   * @param {object} [registry] - optional PluginRegistry. When provided,
-   *   `addEffect(id)` resolves effects through the registry by manifest id.
+   * @param {string} containerSelector
+   * @param {object} [registry]
    * @param {object} [options]
-   * @param {boolean} [options.useSchemaUI=false] - render effect UI from
-   *   `getConfigSchema()` instead of fetching an HTML template.
+   * @param {boolean} [options.useSchemaUI=false]
    * @param {(domElement: HTMLElement, effect: object) => void} [options.uiRenderer]
-   *   - custom renderer when `useSchemaUI` is true. Defaults to
-   *   `renderSchemaForm` from `ui/SchemaForm.js`.
    * @param {() => void} [options.onChange] - fired after any structural
-   *   mutation (add/remove/move/clear) and after per-effect config
-   *   changes routed through the schema UI. Useful for wiring up
-   *   undo/redo.
+   *   mutation (add/remove/move/clear/connect/disconnect).
    */
   constructor(audioContext, containerSelector = '#effects-container', registry = null, options = {}) {
     this.audioContext = audioContext;
     this.container = document.querySelector(containerSelector);
     this.effectChain = [];
+    /** @type {{from: string, to: string, fromPort: string, toPort: string}[]} */
+    this.connections = [];
     this.idCounter = 1;
     this.registry = registry;
     this.useSchemaUI = options.useSchemaUI === true;
     this.uiRenderer = options.uiRenderer ?? null;
     this.onChange = typeof options.onChange === "function" ? options.onChange : null;
     // Subscribers are notified after every successful
-    // rebuildAudioChain() (add/remove/move/clear). The bus uses this
-    // to re-attach to whatever node is now the master output.
+    // rebuildAudioGraph() (add/remove/move/clear/connect/disconnect).
     this.onChainRebuilt = null;
   }
 
   /**
    * Add a new effect to the chain.
-   * @param {string} effectId - When a registry is provided, this is the
-   *   effect's manifest id (canonical, used in serialization). In legacy
-   *   mode (no registry), this is also the class name and the HTML
-   *   file basename.
+   *
+   * In linear-chain mode (the default, no explicit `connect()` calls
+   * yet) the new effect is auto-connected to the previous effect's
+   * output. The "linear" view stays consistent: `effectChain[i].output`
+   * feeds `effectChain[i+1].input`. Explicit `connect()` calls layer
+   * extra connections on top.
+   *
+   * @param {string} effectId
    * @param {object} [options]
-   * @param {number} [options.index] - Insertion position; defaults to
-   *   end of chain.
-   * @param {object} [options.params] - Initial config to apply to the
-   *   effect after construction. Used by deserialization to restore
-   *   a saved project's per-effect state.
-   * @returns {Promise<{id, name, manifestId, dom, audioNode}>}
+   * @param {number} [options.index] - insertion position (default: end)
+   * @param {object} [options.params] - initial config to apply
+   * @param {{x: number, y: number}} [options.position] - for the
+   *   PatchboardUI; ignored by the linear chain
+   * @returns {Promise<{id, name, manifestId, dom, audioNode, position?}>}
    */
   async addEffect(effectId, options = {}) {
-    const { index = this.effectChain.length, params = null } = options;
+    const { index = this.effectChain.length, params = null, position = null } = options;
     let EffectClass;
     let htmlPath;
     let displayName;
@@ -82,7 +79,6 @@ export class EffectChainManager {
       htmlPath = manifest.assets?.html;
       manifestId = manifest.id;
     } else {
-      // Legacy: effectId is also the class name and the file basename.
       EffectClass = (await import(`../effects/${effectId}.js`))[effectId];
       htmlPath = `${effectId}.html`;
       displayName = effectId;
@@ -128,15 +124,25 @@ export class EffectChainManager {
       manifestId,
       dom: wrapper,
       audioNode: effectInstance,
+      position,
     };
     this.effectChain.splice(index, 0, effectObj);
-    this.rebuildAudioChain();
+
+    // Auto-maintain linear chain connections. The connections list is
+    // managed by rebuildAudioGraph(), which uses BOTH the chain order
+    // AND any explicit `connections` to compute the effective graph.
+    // For addEffect, we just need to clean up any explicit connections
+    // that referenced an old chain position (none, since we just
+    // inserted) and let the rebuild compute the new chain order.
+
+    this.rebuildAudioGraph();
     this.onChange?.();
     return effectObj;
   }
 
   /**
-   * Remove an effect by id or object reference.
+   * Remove an effect by id or object reference. Cleans up any
+   * explicit connections that referenced it.
    * @param {string|object} effectObjOrId
    */
   removeEffect(effectObjOrId) {
@@ -145,6 +151,7 @@ export class EffectChainManager {
       : this.effectChain.indexOf(effectObjOrId);
     if (idx === -1) return;
     const effectObj = this.effectChain[idx];
+    const id = effectObj.id;
 
     if (effectObj.audioNode && typeof effectObj.audioNode.destroy === 'function') {
       effectObj.audioNode.destroy();
@@ -153,12 +160,18 @@ export class EffectChainManager {
       effectObj.dom.parentNode.removeChild(effectObj.dom);
     }
     this.effectChain.splice(idx, 1);
-    this.rebuildAudioChain();
+    // Drop connections that referenced the removed node.
+    this.connections = this.connections.filter(
+      (c) => c.from !== id && c.to !== id
+    );
+    this.rebuildAudioGraph();
     this.onChange?.();
   }
 
   /**
-   * Move an existing effect to a new position in the chain.
+   * Move an existing effect to a new position. The connections are
+   * recomputed by rebuildAudioGraph() based on the new chain order,
+   * plus any explicit `connections` the user added.
    * @param {string|object} effectObjOrId
    * @param {number} newIndex
    */
@@ -166,45 +179,197 @@ export class EffectChainManager {
     const idx = typeof effectObjOrId === 'string'
       ? this.effectChain.findIndex(e => e.id === effectObjOrId)
       : this.effectChain.indexOf(effectObjOrId);
-    // Allow newIndex === chain.length (append at the end), but reject
-    // any other out-of-range value to keep callers honest.
     if (idx === -1 || newIndex < 0 || newIndex > this.effectChain.length) return;
     const [effectObj] = this.effectChain.splice(idx, 1);
     this.effectChain.splice(newIndex, 0, effectObj);
 
-    // Re-append DOM in chain order. appendChild on an already-attached node
-    // moves it, so this is both correct and idempotent.
     for (const e of this.effectChain) {
       this.container.appendChild(e.dom);
     }
-    this.rebuildAudioChain();
+    this.rebuildAudioGraph();
     this.onChange?.();
   }
 
   /**
-   * Disconnect every effect and rewire them head-to-tail in chain order.
-   * The last effect's output is connected to `audioContext.destination`.
+   * Add an explicit connection between two nodes' ports. Layers on
+   * top of the chain-order connections. Validates that both nodes
+   * exist; multi-port validation is left to the future per-port
+   * effect classes (currently all nodes have a single in/out port).
+   *
+   * Returns false (no-op) if the connection is already covered by
+   * the chain order or already in the explicit list.
+   *
+   * @param {string} fromId
+   * @param {string} toId
+   * @param {object} [opts]
+   * @param {string} [opts.fromPort="out"]
+   * @param {string} [opts.toPort="in"]
+   * @returns {boolean} true if a new connection was added.
    */
-  rebuildAudioChain() {
-    for (const effect of this.effectChain) {
-      if (effect.audioNode && typeof effect.audioNode.disconnect === 'function') {
-        effect.audioNode.disconnect();
-      }
+  connect(fromId, toId, opts = {}) {
+    const { fromPort = "out", toPort = "in" } = opts;
+    if (fromId === toId) {
+      throw new Error("Cannot connect a node to itself");
     }
+    if (!this.effectChain.some((e) => e.id === fromId)) {
+      throw new Error(`connect: unknown source node '${fromId}'`);
+    }
+    if (!this.effectChain.some((e) => e.id === toId)) {
+      throw new Error(`connect: unknown destination node '${toId}'`);
+    }
+    // Already covered by chain order? No need to add an explicit entry.
+    if (this._isChainConnection(fromId, toId, fromPort, toPort)) {
+      return false;
+    }
+    if (
+      this.connections.some(
+        (c) =>
+          c.from === fromId &&
+          c.to === toId &&
+          c.fromPort === fromPort &&
+          c.toPort === toPort
+      )
+    ) {
+      return false;
+    }
+    this.connections.push({ from: fromId, to: toId, fromPort, toPort });
+    this.rebuildAudioGraph();
+    this.onChange?.();
+    return true;
+  }
 
+  /**
+   * True if `(fromId, fromPort) -> (toId, toPort)` is the default
+   * chain-order connection (only the head-to-tail `out -> in` pairs
+   * for adjacent chain members).
+   */
+  _isChainConnection(fromId, toId, fromPort, toPort) {
+    if (fromPort !== "out" || toPort !== "in") return false;
     for (let i = 0; i < this.effectChain.length - 1; i++) {
-      const currentEffect = this.effectChain[i];
-      const nextEffect = this.effectChain[i + 1];
+      if (this.effectChain[i].id === fromId && this.effectChain[i + 1].id === toId) {
+        return true;
+      }
+    }
+    return false;
+  }
 
-      if (currentEffect.audioNode && nextEffect.audioNode && typeof currentEffect.audioNode.connect === 'function') {
-        currentEffect.audioNode.connect(nextEffect.audioNode);
+  /**
+   * Remove an explicit connection. Chain-order connections are
+   * recomputed by rebuildAudioGraph and cannot be removed this way.
+   * @returns {boolean} true if a connection was removed.
+   */
+  disconnect(fromId, toId, opts = {}) {
+    const { fromPort = "out", toPort = "in" } = opts;
+    const before = this.connections.length;
+    this.connections = this.connections.filter(
+      (c) =>
+        !(
+          c.from === fromId &&
+          c.to === toId &&
+          c.fromPort === fromPort &&
+          c.toPort === toPort
+        )
+    );
+    if (this.connections.length === before) return false;
+    this.rebuildAudioGraph();
+    this.onChange?.();
+    return true;
+  }
+
+  /**
+   * @returns {Array<{from: string, to: string, fromPort: string, toPort: string}>}
+   *   a shallow copy of the explicit connections list.
+   */
+  getConnections() {
+    return this.connections.slice();
+  }
+
+  /**
+   * Disconnect every effect, then rewire the graph from the
+   * connection list. Effective connections = chain-order connections
+   * (chain[i] -> chain[i+1] for all i) plus any explicit `connections`.
+   * For each input port with multiple incoming connections, a
+   * GainNode is inserted as a summer. Sinks (nodes with no outgoing
+   * connection) are connected to `audioContext.destination`.
+   *
+   * Fires `onChainRebuilt` at the end so the visualizer can
+   * re-attach its analyser tap.
+   */
+  rebuildAudioGraph() {
+    // Disconnect all nodes first. Each node's disconnect() is a
+    // best-effort: some browsers throw if the node was never
+    // connected, so we swallow the error.
+    for (const effect of this.effectChain) {
+      if (effect.audioNode && typeof effect.audioNode.disconnect === "function") {
+        try { effect.audioNode.disconnect(); } catch (_) { }
       }
     }
 
-    if (this.effectChain.length > 0) {
-      const lastEffect = this.effectChain[this.effectChain.length - 1];
-      if (lastEffect.audioNode && typeof lastEffect.audioNode.connect === 'function') {
-        lastEffect.audioNode.connect(this.audioContext.destination);
+    // Build the effective connection set, dedup by (from, fromPort, to, toPort).
+    const effective = new Map(); // key -> {fromId, fromPort, toId, toPort}
+    const keyOf = (c) => `${c.from}|${c.fromPort}|${c.to}|${c.toPort}`;
+    for (let i = 0; i < this.effectChain.length - 1; i++) {
+      const a = this.effectChain[i];
+      const b = this.effectChain[i + 1];
+      const c = { from: a.id, fromPort: "out", to: b.id, toPort: "in" };
+      effective.set(keyOf(c), c);
+    }
+    for (const c of this.connections) {
+      effective.set(keyOf(c), c);
+    }
+
+    // Group by destination input: "nodeId|port" -> sources[].
+    const inputs = new Map();
+    for (const c of effective.values()) {
+      const inputKey = `${c.to}|${c.toPort}`;
+      if (!inputs.has(inputKey)) inputs.set(inputKey, []);
+      inputs.get(inputKey).push(c);
+    }
+
+    const nodeById = new Map();
+    for (const e of this.effectChain) nodeById.set(e.id, e);
+
+    // Track which nodes have at least one outgoing connection, so
+    // we know which ones are "sinks" (-> destination).
+    const hasOutgoing = new Set();
+    for (const c of effective.values()) hasOutgoing.add(c.from);
+
+    // Wire each input port. For ports with a single source, direct
+    // connect. For ports with multiple sources, build a summer
+    // GainNode and route all sources through it.
+    for (const [inputKey, sources] of inputs) {
+      const [toId, toPort] = inputKey.split("|");
+      const target = nodeById.get(toId);
+      if (!target) continue;
+      const targetInput = target.audioNode.getInputNode?.(toPort) ?? target.audioNode.input;
+      if (!targetInput) continue;
+
+      if (sources.length === 1) {
+        const src = nodeById.get(sources[0].from);
+        if (!src) continue;
+        const srcOutput = src.audioNode.getOutputNode?.(sources[0].fromPort) ?? src.audioNode.output;
+        if (srcOutput) srcOutput.connect(targetInput);
+      } else {
+        const summer = this.audioContext.createGain();
+        for (const s of sources) {
+          const src = nodeById.get(s.from);
+          if (!src) continue;
+          const srcOutput = src.audioNode.getOutputNode?.(s.fromPort) ?? src.audioNode.output;
+          if (srcOutput) srcOutput.connect(summer);
+        }
+        summer.connect(targetInput);
+      }
+    }
+
+    // Sinks: nodes with no outgoing connection are connected straight
+    // to the destination. (A source with no input connections still
+    // counts as a sink if it has no outgoing connection.)
+    for (const e of this.effectChain) {
+      if (!hasOutgoing.has(e.id)) {
+        const out = e.audioNode.getOutputNode?.("out") ?? e.audioNode.output;
+        if (out) {
+          try { out.connect(this.audioContext.destination); } catch (_) { }
+        }
       }
     }
 
@@ -214,11 +379,18 @@ export class EffectChainManager {
   }
 
   /**
+   * @deprecated Use `rebuildAudioGraph` (alias kept for tests).
+   */
+  rebuildAudioChain() {
+    return this.rebuildAudioGraph();
+  }
+
+  /**
    * @param {string} id
    * @returns {object|undefined}
    */
   getEffectById(id) {
-    return this.effectChain.find(e => e.id === id);
+    return this.effectChain.find((e) => e.id === id);
   }
 
   /**
@@ -239,14 +411,6 @@ export class EffectChainManager {
 
   /**
    * Latency information for the running audio graph.
-   *
-   * - `baseLatency` is the latency introduced by the AudioContext itself
-   *   (the render quantum * sample time). Hint the browser with
-   *   `latencyHint: 'interactive'` to keep this small.
-   * - `outputLatency` is the additional latency between the AudioContext
-   *   and the audio output device. Set by the browser; not user-tunable.
-   * - `total` is the sum, in seconds.
-   *
    * @returns {{baseLatency: number, outputLatency: number, total: number}}
    */
   getLatency() {
@@ -257,9 +421,7 @@ export class EffectChainManager {
 }
 
 /**
- * Lazy-load the default schema UI renderer. The `ui/` layer is
- * optional — managers that don't enable `useSchemaUI` never trigger
- * this import, so the manager stays decoupled from the UI layer.
+ * Lazy-load the default schema UI renderer.
  */
 let cachedDefaultRenderer = null;
 async function loadDefaultRenderer() {

@@ -162,7 +162,9 @@ export class EffectChainManager {
     const idx = typeof effectObjOrId === 'string'
       ? this.effectChain.findIndex(e => e.id === effectObjOrId)
       : this.effectChain.indexOf(effectObjOrId);
-    if (idx === -1 || newIndex < 0 || newIndex >= this.effectChain.length) return;
+    // Allow newIndex === chain.length (append at the end), but reject
+    // any other out-of-range value to keep callers honest.
+    if (idx === -1 || newIndex < 0 || newIndex > this.effectChain.length) return;
     const [effectObj] = this.effectChain.splice(idx, 1);
     this.effectChain.splice(newIndex, 0, effectObj);
 
@@ -255,7 +257,7 @@ let cachedDefaultRenderer = null;
 async function loadDefaultRenderer() {
   if (cachedDefaultRenderer) return cachedDefaultRenderer;
   const mod = await import("../ui/SchemaForm.js");
-  cachedDefaultRenderer = (domElement, effect) =>
-    mod.renderSchemaForm(domElement, effect);
+  cachedDefaultRenderer = (domElement, effect, options) =>
+    mod.renderSchemaForm(domElement, effect, options);
   return cachedDefaultRenderer;
 }

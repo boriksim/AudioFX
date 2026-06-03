@@ -8,6 +8,7 @@ import { AnalyserBus } from "./engine/AnalyserBus.js";
 import { SpectrumBars } from "./visualization/renderers/SpectrumBars.js";
 import { Waveform } from "./visualization/renderers/Waveform.js";
 import { PresetManagerUI } from "./ui/PresetManager.js";
+import { PedalboardUI } from "./ui/PedalboardUI.js";
 import { HistoryController } from "./persistence/history.js";
 import { serializeProject, deserializeProject } from "./persistence/project.js";
 
@@ -127,6 +128,8 @@ async function initAudio() {
   await ecm.addEffect("delay");
 
   setupVisualizer(audioContext, ecm);
+
+  const pedalboard = new PedalboardUI(ecm);
 
   const presetUI = new PresetManagerUI(ecm);
   presetUI.onStatus((msg, kind) => setStatus(msg, kind));

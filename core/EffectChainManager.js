@@ -46,10 +46,16 @@ export class EffectChainManager {
    *   effect's manifest id (canonical, used in serialization). In legacy
    *   mode (no registry), this is also the class name and the HTML
    *   file basename.
-   * @param {number} [index] - Insertion position; defaults to end of chain.
+   * @param {object} [options]
+   * @param {number} [options.index] - Insertion position; defaults to
+   *   end of chain.
+   * @param {object} [options.params] - Initial config to apply to the
+   *   effect after construction. Used by deserialization to restore
+   *   a saved project's per-effect state.
    * @returns {Promise<{id, name, manifestId, dom, audioNode}>}
    */
-  async addEffect(effectId, index = this.effectChain.length) {
+  async addEffect(effectId, options = {}) {
+    const { index = this.effectChain.length, params = null } = options;
     let EffectClass;
     let htmlPath;
     let displayName;
@@ -100,6 +106,10 @@ export class EffectChainManager {
     if (this.useSchemaUI) {
       const renderer = this.uiRenderer ?? (await loadDefaultRenderer());
       renderer(wrapper, effectInstance);
+    }
+
+    if (params && typeof effectInstance.applyConfig === "function") {
+      effectInstance.applyConfig(params);
     }
 
     const effectObj = {

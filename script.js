@@ -11,6 +11,20 @@ import { PresetManagerUI } from "./ui/PresetManager.js";
 import { PedalboardUI } from "./ui/PedalboardUI.js";
 import { HistoryController } from "./persistence/history.js";
 import { serializeProject, deserializeProject } from "./persistence/project.js";
+import { DistortionCurve } from "./visualization/perEffect/DistortionCurve.js";
+import { BiquadResponse } from "./visualization/perEffect/BiquadResponse.js";
+import { DelayImpulse } from "./visualization/perEffect/DelayImpulse.js";
+
+/**
+ * Per-effect live visualization factories, keyed by manifest id.
+ * Each factory takes the effect and a canvas, returns a renderer
+ * that can be added to the AnalyserBus.
+ */
+const PER_EFFECT_VIZ = {
+  distortion: (effect, canvas) => new DistortionCurve(canvas, effect),
+  lowpass: (effect, canvas) => new BiquadResponse(canvas, effect.lowpassNode),
+  delay: (effect, canvas) => new DelayImpulse(canvas, effect),
+};
 
 function setStatus(msg, kind = "info") {
   const el = document.getElementById("status");
@@ -45,8 +59,32 @@ function setupVisualizer(audioContext, ecm) {
   const lastEffect = ecm.effectChain[ecm.effectChain.length - 1].audioNode;
   bus.attach("output", lastEffect.output);
 
-  let activeRenderer = null;
+  // Per-effect live viz: one small canvas inside every card with a
+  // registered factory. Each renderer joins the same rAF loop as the
+  // main visualizer.
+  const perEffectRenderers = [];
+  function syncPerEffect() {
+    for (const r of perEffectRenderers) bus.removeRenderer(r);
+    perEffectRenderers.length = 0;
+    for (const card of ecm.container.querySelectorAll(".effect-instance")) {
+      const effectObj = ecm.effectChain.find((e) => e.dom === card);
+      if (!effectObj) continue;
+      const factory = PER_EFFECT_VIZ[effectObj.manifestId];
+      if (!factory) continue;
+      const small = card.querySelector(".pe-viz canvas");
+      if (!small) continue;
+      perEffectRenderers.push(factory(effectObj.audioNode, small));
+    }
+    for (const r of perEffectRenderers) bus.addRenderer(r);
+  }
+  // Re-sync per-effect viz when the chain changes.
+  const originalOnChange = ecm.onChange;
+  ecm.onChange = () => {
+    if (originalOnChange) originalOnChange();
+    setTimeout(syncPerEffect, 0);
+  };
 
+  let activeRenderer = null;
   function setMode(mode) {
     if (activeRenderer) {
       bus.removeRenderer(activeRenderer);
@@ -68,6 +106,7 @@ function setupVisualizer(audioContext, ecm) {
 
   modeSelect.addEventListener("change", (e) => setMode(e.target.value));
   setMode(modeSelect.value);
+  syncPerEffect();
   return bus;
 }
 

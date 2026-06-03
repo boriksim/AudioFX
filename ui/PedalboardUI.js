@@ -151,6 +151,22 @@ export class PedalboardUI {
       grip.setAttribute("aria-hidden", "true");
       card.prepend(grip);
     }
+
+    // Per-effect live viz canvas. The runtime's visualization layer
+    // looks for `.pe-viz canvas` inside the card and wires it to the
+    // appropriate renderer; we just make sure the canvas exists.
+    if (!card.querySelector(".pe-viz")) {
+      const wrap = document.createElement("div");
+      wrap.className = "pe-viz";
+      const c = document.createElement("canvas");
+      c.width = 220;
+      c.height = 80;
+      wrap.appendChild(c);
+      // Insert above the schema form so the viz is visible at the top.
+      const form = card.querySelector("form.schema-form");
+      if (form) card.insertBefore(wrap, form);
+      else card.appendChild(wrap);
+    }
   }
 
   _refreshCardState(card) {

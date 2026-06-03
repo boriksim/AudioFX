@@ -47,6 +47,8 @@ class MockAudioContext {
     this.currentTime = 0;
     this.destination = new MockAudioNode(this, "destination");
     this.sampleRate = 44100;
+    this.baseLatency = 0.005;
+    this.outputLatency = 0.020;
     this._nodeRegistry = [];
   }
 

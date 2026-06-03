@@ -51,6 +51,10 @@ describe("DistortionEffect", () => {
     expect(out).toBeGreaterThanOrEqual(-1);
     expect(out).toBeLessThanOrEqual(1);
   });
+
+  it("uses 2x oversample (Phase 1.5 latency choice)", () => {
+    expect(fx.waveShaper.oversample).toBe("2x");
+  });
 });
 
 describe("DelayEffect", () => {

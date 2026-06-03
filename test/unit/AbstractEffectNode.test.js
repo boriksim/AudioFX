@@ -70,4 +70,36 @@ describe("AbstractEffectNode", () => {
     effect.updateConfig({ mix: 0.3 });
     expect(effect.mix).toBe(0.3);
   });
+
+  describe("hard bypass (Phase 1.5)", () => {
+    it("disconnects the wet path from effectOutput when bypassed", () => {
+      effect = new TrivialEffect(ctx, dom);
+      // Before toggling, the wet path is connected (effectOutput -> wetGain).
+      expect(effect.effectOutput.connections).toContain(effect.wetGain);
+
+      effect.setBypassed(true);
+      // After bypass, the wet path is disconnected so the effect's DSP
+      // stops processing samples.
+      expect(effect.effectOutput.connections).not.toContain(effect.wetGain);
+    });
+
+    it("reconnects the wet path when bypass is cleared", () => {
+      effect = new TrivialEffect(ctx, dom);
+      effect.setBypassed(true);
+      expect(effect.effectOutput.connections).not.toContain(effect.wetGain);
+
+      effect.setBypassed(false);
+      expect(effect.effectOutput.connections).toContain(effect.wetGain);
+    });
+
+    it("rapid toggling is safe (no throws on duplicate connect/disconnect)", () => {
+      effect = new TrivialEffect(ctx, dom);
+      expect(() => {
+        effect.setBypassed(true);
+        effect.setBypassed(false);
+        effect.setBypassed(true);
+        effect.setBypassed(false);
+      }).not.toThrow();
+    });
+  });
 });

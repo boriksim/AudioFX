@@ -148,4 +148,22 @@ export class EffectChainManager {
       this.removeEffect(this.effectChain[0]);
     }
   }
+
+  /**
+   * Latency information for the running audio graph.
+   *
+   * - `baseLatency` is the latency introduced by the AudioContext itself
+   *   (the render quantum * sample time). Hint the browser with
+   *   `latencyHint: 'interactive'` to keep this small.
+   * - `outputLatency` is the additional latency between the AudioContext
+   *   and the audio output device. Set by the browser; not user-tunable.
+   * - `total` is the sum, in seconds.
+   *
+   * @returns {{baseLatency: number, outputLatency: number, total: number}}
+   */
+  getLatency() {
+    const baseLatency = this.audioContext?.baseLatency ?? 0;
+    const outputLatency = this.audioContext?.outputLatency ?? 0;
+    return { baseLatency, outputLatency, total: baseLatency + outputLatency };
+  }
 }

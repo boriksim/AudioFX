@@ -173,7 +173,12 @@ export class DistortionEffect extends AbstractEffectNode {
     }
 
     this.waveShaper.curve = curve;
-    this.waveShaper.oversample = "4x";
+    // 2x oversample is the sweet spot for distortion: it suppresses
+    // aliasing artifacts that 'none' would produce while costing roughly
+    // 2x the work of 'none' (vs. 4x for '4x'). On underpowered hardware
+    // the 4x setting can cause buffer underruns that the user hears as
+    // glitches. Bump to '4x' if you have headroom and want cleaner highs.
+    this.waveShaper.oversample = "2x";
 
   }
 

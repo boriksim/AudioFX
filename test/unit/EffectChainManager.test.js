@@ -137,4 +137,24 @@ describe("EffectChainManager", () => {
     expect(a.audioNode.destroy).toHaveBeenCalled();
     expect(b.audioNode.destroy).toHaveBeenCalled();
   });
+
+  describe("getLatency() (Phase 1.5)", () => {
+    it("returns baseLatency, outputLatency, and a sum total", () => {
+      const result = manager.getLatency();
+      expect(result).toEqual({
+        baseLatency: ctx.baseLatency,
+        outputLatency: ctx.outputLatency,
+        total: ctx.baseLatency + ctx.outputLatency,
+      });
+    });
+
+    it("falls back to 0 if the AudioContext omits latency properties", () => {
+      const noLatencyCtx = { baseLatency: undefined, outputLatency: undefined };
+      const m = new EffectChainManager(noLatencyCtx, "#effects-container");
+      const result = m.getLatency();
+      expect(result.baseLatency).toBe(0);
+      expect(result.outputLatency).toBe(0);
+      expect(result.total).toBe(0);
+    });
+  });
 });

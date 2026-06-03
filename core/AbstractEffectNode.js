@@ -36,12 +36,32 @@ export default class AbstractEffectNode extends AbstractAudioNode {
 
   initUI() {}
 
+  /**
+   * Toggle the dry/wet bypass.
+   *
+   * In addition to the gain-based mute, this method also *disconnects* the
+   * wet path from the audio graph while the effect is bypassed. That stops
+   * the effect's DSP from processing samples (saves CPU, eliminates a
+   * source of glitches in long chains), and the dry signal still flows
+   * through `dryGain`. When bypass is cleared the wet path is reconnected.
+   */
   setBypassed(bypassed) {
     this.bypass = bypassed;
     if (bypassed) {
+      try {
+        this.effectOutput.disconnect(this.wetGain);
+      } catch (_) {
+        // Already disconnected — safe to ignore.
+      }
       this.dryGain.gain.value = 1.0;
       this.wetGain.gain.value = 0.0;
     } else {
+      try {
+        this.effectOutput.connect(this.wetGain);
+      } catch (_) {
+        // connect() is idempotent in some browsers but not all; ignore
+        // a duplicate-connect error so toggling rapidly is safe.
+      }
       this.setMix(this.mix);
     }
   }

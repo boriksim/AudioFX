@@ -29,6 +29,10 @@ export class EffectChainManager {
    * @param {(domElement: HTMLElement, effect: object) => void} [options.uiRenderer]
    *   - custom renderer when `useSchemaUI` is true. Defaults to
    *   `renderSchemaForm` from `ui/SchemaForm.js`.
+   * @param {() => void} [options.onChange] - fired after any structural
+   *   mutation (add/remove/move/clear) and after per-effect config
+   *   changes routed through the schema UI. Useful for wiring up
+   *   undo/redo.
    */
   constructor(audioContext, containerSelector = '#effects-container', registry = null, options = {}) {
     this.audioContext = audioContext;
@@ -38,6 +42,7 @@ export class EffectChainManager {
     this.registry = registry;
     this.useSchemaUI = options.useSchemaUI === true;
     this.uiRenderer = options.uiRenderer ?? null;
+    this.onChange = typeof options.onChange === "function" ? options.onChange : null;
   }
 
   /**
@@ -105,7 +110,8 @@ export class EffectChainManager {
 
     if (this.useSchemaUI) {
       const renderer = this.uiRenderer ?? (await loadDefaultRenderer());
-      renderer(wrapper, effectInstance);
+      const onAfterConfigChange = () => this.onChange?.();
+      renderer(wrapper, effectInstance, { onAfterConfigChange });
     }
 
     if (params && typeof effectInstance.applyConfig === "function") {
@@ -121,6 +127,7 @@ export class EffectChainManager {
     };
     this.effectChain.splice(index, 0, effectObj);
     this.rebuildAudioChain();
+    this.onChange?.();
     return effectObj;
   }
 
@@ -143,6 +150,7 @@ export class EffectChainManager {
     }
     this.effectChain.splice(idx, 1);
     this.rebuildAudioChain();
+    this.onChange?.();
   }
 
   /**
@@ -164,6 +172,7 @@ export class EffectChainManager {
       this.container.appendChild(e.dom);
     }
     this.rebuildAudioChain();
+    this.onChange?.();
   }
 
   /**

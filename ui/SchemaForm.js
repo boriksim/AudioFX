@@ -38,10 +38,13 @@ const WIDGETS = {
  * @param {object} [options]
  * @param {boolean} [options.includeBypass=true] - prepend a Bypass
  *   toggle bound to `effect.setBypassed()`.
+ * @param {() => void} [options.onAfterConfigChange] - invoked after
+ *   every successful applyConfig call from the form. Used by the
+ *   EffectChainManager to fire its `onChange` hook for undo/redo.
  * @returns {{ destroy(): void, refresh(): void }}
  */
 export function renderSchemaForm(domElement, effect, options = {}) {
-  const { includeBypass = true } = options;
+  const { includeBypass = true, onAfterConfigChange } = options;
   const schema = effect.getConfigSchema?.() ?? {};
   const current = effect.getConfig?.() ?? {};
   const form = document.createElement("form");
@@ -49,6 +52,10 @@ export function renderSchemaForm(domElement, effect, options = {}) {
   form.style.cssText = "display: flex; flex-direction: column; gap: 8px;";
 
   const changeListeners = new Map();
+
+  function notifyChange() {
+    if (typeof onAfterConfigChange === "function") onAfterConfigChange();
+  }
 
   function makeBinding(paramName) {
     return {
@@ -61,6 +68,7 @@ export function renderSchemaForm(domElement, effect, options = {}) {
           update.mix = current.mix;
         }
         effect.applyConfig(update);
+        notifyChange();
         for (const fn of changeListeners.get(paramName) ?? []) fn(v);
       },
       onChange: (fn) => {
@@ -76,6 +84,7 @@ export function renderSchemaForm(domElement, effect, options = {}) {
       setValue: (v) => {
         current.bypass = v;
         effect.applyConfig({ bypass: v, mix: current.mix });
+        notifyChange();
         for (const fn of changeListeners.get("bypass") ?? []) fn(v);
       },
       onChange: (fn) => {

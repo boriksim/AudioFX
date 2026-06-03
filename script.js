@@ -8,6 +8,8 @@ import { AnalyserBus } from "./engine/AnalyserBus.js";
 import { SpectrumBars } from "./visualization/renderers/SpectrumBars.js";
 import { Waveform } from "./visualization/renderers/Waveform.js";
 import { PresetManagerUI } from "./ui/PresetManager.js";
+import { HistoryController } from "./persistence/history.js";
+import { serializeProject, deserializeProject } from "./persistence/project.js";
 
 function setStatus(msg, kind = "info") {
   const el = document.getElementById("status");
@@ -101,8 +103,21 @@ async function initAudio() {
     audioContext,
     "#effects-container",
     registry,
-    { useSchemaUI: true },
+    { useSchemaUI: true, onChange: null }, // set after history is built
   );
+
+  const history = new HistoryController({
+    snapshot: () => serializeProject(ecm),
+    apply: async (project) => {
+      // Restore a snapshot: clear the chain, deserialize, then
+      // re-attach the mic stream so the source is live again.
+      ecm.clear();
+      await deserializeProject(project, ecm);
+      const mic = ecm.effectChain[0]?.audioNode;
+      if (mic instanceof InputMic) mic.initStream(stream);
+    },
+  });
+  ecm.onChange = () => history.push();
 
   const inputMic = (await ecm.addEffect("input-mic")).audioNode;
   inputMic.initStream(stream);
@@ -115,6 +130,25 @@ async function initAudio() {
 
   const presetUI = new PresetManagerUI(ecm);
   presetUI.onStatus((msg, kind) => setStatus(msg, kind));
+
+  // Wire undo / redo to the buttons and keep them in sync with the
+  // controller's state.
+  const undoBtn = document.getElementById("undo");
+  const redoBtn = document.getElementById("redo");
+  history.subscribe((s) => {
+    if (undoBtn) undoBtn.disabled = !s.canUndo;
+    if (redoBtn) redoBtn.disabled = !s.canRedo;
+  });
+  if (undoBtn) {
+    undoBtn.addEventListener("click", () => {
+      if (history.undo()) setStatus("Undone");
+    });
+  }
+  if (redoBtn) {
+    redoBtn.addEventListener("click", () => {
+      if (history.redo()) setStatus("Redone");
+    });
+  }
 
   const latency = ecm.getLatency();
   console.log("Audio context state:", audioContext.state);

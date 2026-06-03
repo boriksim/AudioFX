@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { LowpassEffect } from "../../effects/LowpassEffect.js";
+import { renderSchemaForm } from "../../ui/SchemaForm.js";
 
 /**
  * These tests pin down the bug fixes from Phase 1:
@@ -56,6 +57,17 @@ describe("LowpassEffect (Phase 1 fixes)", () => {
   it("updateConfig with lowpassFrequency applies via setFrequency", () => {
     lp.updateConfig({ lowpassFrequency: 880 });
     expect(lp.lowpassNode.frequency.value).toBe(880);
+  });
+
+  it("schema form's frequency slider drives the biquad", () => {
+    // Regression: the schema key 'frequency' must match applyConfig.
+    renderSchemaForm(dom, lp);
+    const ranges = dom.querySelectorAll('input[type="range"]');
+    const frequency = [...ranges].find((r) => parseFloat(r.max) === 16000);
+    expect(frequency).toBeTruthy();
+    frequency.value = "2200";
+    frequency.dispatchEvent(new Event("input"));
+    expect(lp.lowpassNode.frequency.value).toBe(2200);
   });
 
   it("updateConfig with mix applies via super", () => {

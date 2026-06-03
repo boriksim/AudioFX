@@ -10,14 +10,13 @@ export class InputMic extends AbstractAudioNode {
     tags: ["input", "source", "microphone"],
     inputChannels: 0,
     outputChannels: 2,
-    assets: { html: "InputMic.html" },
   };
 
     constructor(audioContext, domElement) {
         super(audioContext);
         this.audioContext = audioContext;
         this.domElement = domElement;
-        
+
         this.stream = null;
         this.source = null;
 
@@ -31,8 +30,6 @@ export class InputMic extends AbstractAudioNode {
         this.gainNode.gain.value = 1.0;
 
         this.output = this.gainNode;
-
-        this.initUI();
     }
 
     getInputNode() {
@@ -114,40 +111,6 @@ export class InputMic extends AbstractAudioNode {
         this.setupRouting();
     }
 
-    initUI() {
-        this.channelRadios = this.domElement.querySelectorAll('[data-channel-mic]');
-        if (this.channelRadios.length) {
-            this.channelRadios.forEach((radio) => {
-                radio.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        this.channelMode = e.target.value;
-                        this.setupRouting();
-                    }
-                });
-            });
-        }
-
-        this.monoCheckbox = this.domElement.querySelector('[data-mono-mic]');
-        if (this.monoCheckbox) {
-            this.monoCheckbox.addEventListener('change', (e) => {
-                this.convertToMono = e.target.checked;
-                this.setupRouting();
-            });
-        }
-
-        this.gainSlider = this.domElement.querySelector('[data-gain-mic]');
-        this.gainValueDisplay = this.domElement.querySelector('[data-gain-mic-value]');
-        if (this.gainSlider) {
-            this.gainSlider.addEventListener('input', (e) => {
-                const gain = parseFloat(e.target.value);
-                this.gainNode.gain.value = gain;
-                if (this.gainValueDisplay) {
-                    this.gainValueDisplay.textContent = (gain - 1).toFixed(2);
-                }
-            });
-        }
-    }
-
     getConfig() {
         return {
             channelMode: this.channelMode,
@@ -160,14 +123,39 @@ export class InputMic extends AbstractAudioNode {
         if (typeof config.gain === "number") {
             this.gainNode.gain.value = config.gain;
         }
-        if (typeof config.channelMode === "string" || typeof config.convertToMono === "boolean") {
-            if (typeof config.channelMode === "string") {
-                this.channelMode = config.channelMode;
-            }
-            if (typeof config.convertToMono === "boolean") {
-                this.convertToMono = config.convertToMono;
-            }
-            if (this.stream) this.setupRouting();
+        let needsReroute = false;
+        if (typeof config.channelMode === "string" && config.channelMode !== this.channelMode) {
+            this.channelMode = config.channelMode;
+            needsReroute = true;
         }
+        if (typeof config.convertToMono === "boolean" && config.convertToMono !== this.convertToMono) {
+            this.convertToMono = config.convertToMono;
+            needsReroute = true;
+        }
+        if (needsReroute && this.stream) this.setupRouting();
+    }
+
+    getConfigSchema() {
+        return {
+            channelMode: {
+                type: "select",
+                options: ["left", "right", "stereo"],
+                value: this.channelMode,
+                label: "Channel",
+            },
+            convertToMono: {
+                type: "toggle",
+                value: this.convertToMono,
+                label: "Convert to mono",
+            },
+            gain: {
+                type: "range",
+                min: 0,
+                max: 2,
+                step: 0.01,
+                value: this.gainNode.gain.value,
+                label: "Gain",
+            },
+        };
     }
 }

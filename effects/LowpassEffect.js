@@ -114,7 +114,7 @@ export class LowpassEffect extends BaseEffect {
         value: this.mix,
         label: "Mix",
       },
-      lowpassFrequency: {
+      frequency: {
         type: "range",
         min: 100,
         max: 16000,

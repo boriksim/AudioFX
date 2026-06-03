@@ -70,7 +70,7 @@ export function renderSchemaForm(domElement, effect, options = {}) {
     };
   }
 
-  if (includeBypass) {
+  if (includeBypass && typeof effect.setBypassed === "function") {
     const bypassBinding = {
       getValue: () => current.bypass,
       setValue: (v) => {

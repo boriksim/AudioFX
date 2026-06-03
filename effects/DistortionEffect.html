@@ -1,0 +1,30 @@
+<div class="distortion-effect" style="display: flex; flex-direction: column;">
+  <label>
+    Strength:
+    <input type="range" min="0" max="10" step="0.1" value="1" data-fx-distortion_strength>
+    <span data-fx-distortion_strength-value>1</span>
+  </label>
+
+  <label for="select-distortion-type">Distortion Type:</label>
+  <select id="select-distortion-type" data-fx-distortion_type>
+    <option value="soft">Soft Clipping</option>
+    <option value="hard">Hard Clipping</option>
+    <option value="tanh">Tanh</option>
+    <option value="exponential">Exponential</option>
+    <option value="foldback">Foldback</option>
+    <option value="bitcrusher">Bitcrusher</option>
+    <option value="symmetric">Symmetric</option>
+    <option value="diode-like">Diode-like</option>
+  </select>
+
+  <label>
+    Mix:
+    <input type="range" min="0" max="1" step="0.01" value="1.00" data-fx-mix>
+    <span data-fx-mix-value>1.00</span>
+  </label>
+
+  <label>
+    Bypass:
+    <input type="checkbox" value="1" data-fx-bypass checked>
+  </label>
+</div>

@@ -178,9 +178,13 @@ describe("PedalboardUI", () => {
     expect(card.classList.contains("dragging")).toBe(true);
   });
 
-  it("dragstart on the card itself (bare background) initiates a reorder", () => {
+  it("card itself is NOT draggable (only the grip is)", () => {
     const card = ecm.effectChain[0].dom;
+    expect(card.getAttribute("draggable")).toBe("false");
+    const grip = card.querySelector(".pb-grip");
+    expect(grip.getAttribute("draggable")).toBe("true");
+    // Firing dragstart on the card should not mark it as dragging.
     drag(card, "dragstart", card.dataset.effectId);
-    expect(card.classList.contains("dragging")).toBe(true);
+    expect(card.classList.contains("dragging")).toBe(false);
   });
 });

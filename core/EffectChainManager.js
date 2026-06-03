@@ -43,6 +43,10 @@ export class EffectChainManager {
     this.useSchemaUI = options.useSchemaUI === true;
     this.uiRenderer = options.uiRenderer ?? null;
     this.onChange = typeof options.onChange === "function" ? options.onChange : null;
+    // Subscribers are notified after every successful
+    // rebuildAudioChain() (add/remove/move/clear). The bus uses this
+    // to re-attach to whatever node is now the master output.
+    this.onChainRebuilt = null;
   }
 
   /**
@@ -202,6 +206,10 @@ export class EffectChainManager {
       if (lastEffect.audioNode && typeof lastEffect.audioNode.connect === 'function') {
         lastEffect.audioNode.connect(this.audioContext.destination);
       }
+    }
+
+    if (typeof this.onChainRebuilt === "function") {
+      this.onChainRebuilt();
     }
   }
 

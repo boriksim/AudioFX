@@ -1,0 +1,171 @@
+# AudioFX — Autonomous Continuation State
+
+This file is the anchor for reinitialization. **If you (a fresh agent
+instance) are reading this, you have just been reinitialized. Read this
+file in full, then read `docs/ARCHITECTURE.md`, then `git log -20`, and
+then resume the next-steps section below.**
+
+---
+
+## Current state at a glance
+
+- **Branch:** `dev` (orphan from clean local state). `main` and `tmp`
+  must remain bit-identical to remote — do not touch them.
+- **Remote:** `https://github.com/boriksim/AudioFX.git`
+- **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
+  `test/setup.js`.
+- **Stack:** native ESM, no build step.
+- **Last known good test count:** 199 passing across 20 test files.
+  (Updated at the top of every commit.)
+
+---
+
+## Completed phases
+
+- **Phase 1 — Stabilization:** LowpassEffect fixes, "rebult" typo,
+  container selector, unified bypass, initUI guards, README rewrite.
+- **Phase 1.5 — Latency:** `latencyHint: 'interactive'`,
+  `channelCount: 1`, WaveShaper `oversample: "2x"`, hard-bypass
+  disconnects `effectOutput → wetGain`, `getLatency()` returns
+  `{baseLatency, outputLatency, total}`.
+- **Phase 2a — Plugin system:** `core/BaseEffect.js`,
+  `core/PluginRegistry.js` (loadFromModule + instantiate + URL
+  memoization), all 4 base effects declare `static manifest`, manager
+  accepts optional registry, runtime uses registry + manifest ids.
+- **Phase 2b — Schema UI:** `ui/widgets/{Range,Select,Toggle}.js` with
+  binding contract, `ui/SchemaForm.js` reads `getConfigSchema()` and
+  prepends a Bypass toggle, manager has `useSchemaUI` + custom
+  `uiRenderer` options.
+- **Phase 2c — Persistence:** `persistence/project.js` (format v1).
+- **Phase 2d — Visualization subsystem:** `engine/AnalyserBus.js`
+  (per-tap pool, single rAF loop, auto-pause on `document.hidden`,
+  per-renderer error isolation), `visualization/renderers/{SpectrumBars,
+  Waveform}.js`, per-effect viz `{DistortionCurve, BiquadResponse,
+  DelayImpulse}`. Runtime migration to schema UI; legacy `effects/*.html`
+  deleted.
+- **Phase 3a — Preset manager + project file I/O:** `persistence/presets.js`
+  (localStorage CRUD with validation), `persistence/importExport.js`,
+  `ui/PresetManager.js` (PresetManagerUI with status callback), index
+  panel + status bar.
+- **Phase 3b — Undo/redo:** `persistence/history.js` HistoryController
+  (debounced 250ms, maxSize 50, symmetric undo/redo, `subscribe`,
+  `flush`, `clear`, `applyExternal`).
+- **Phase 3c — Pedalboard UI:** `ui/PedalboardUI.js` (drag-to-reorder,
+  add picker, remove button, grip, bypass class).
+- **Phase 3d — Per-effect live viz:** `visualization/perEffect/
+  {DistortionCurve, BiquadResponse, DelayImpulse}.js` + `.pe-viz`
+  canvas per card.
+- **Phase 3e — More sources:** `effects/InputFile.js`,
+  `effects/InputOscillator.js`, registered in runtime, file picker +
+  play button in `InputFile.renderSourceActions()`.
+- **Hotfix — phase-3 post-feedback:** grip-only drag, bus re-attach
+  on chain rebuild, mic re-attach on add, per-effect level meter for
+  mic, `docs/STATUS.md` created.
+
+---
+
+## Open / upcoming work
+
+### Phase 4a — Graph model
+Replace the linear `effectChain` with a true graph (`nodes[]` +
+`connections[]`) supporting any-to-any wiring, multi-input summing
+via per-port GainNode, port validation, and graph-level
+serialization. `EffectChainManager` becomes a thin compat layer
+that constructs the equivalent linear graph. Project format
+upgrades to v2 with a v1→v2 migration.
+
+### Phase 4b — Patchboard UI
+Replace `PedalboardUI` with a free-grid `PatchboardUI`: SVG
+`<path>` wires between port dots, cards positioned by absolute
+`transform: translate(x, y)`, drag-to-wire interactions, port
+hit-testing.
+
+### Phase 4c — Multi-port effects
+Add a `ChannelSplitter` effect that declares `manifest.outputs =
+[{id: "L"}, {id: "R"}]` so two parallel chains can be patched
+from a single source.
+
+### Phase 5 — Profiling & docs
+`engine/Profiler.js` (per-node CPU time, render quantum histogram,
+drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
+
+---
+
+## Key architectural decisions (do not reverse without user input)
+
+- **Latency first.** Keep `latencyHint: 'interactive'`,
+  `channelCount: 1`, hard-bypass disconnects the wet path. No
+  filter nodes in the default chain (Biquad is added by user, not
+  always-on).
+- **Native ESM, no build step.** All imports are explicit paths;
+  `script.js` is loaded via `<script type="module">`. Do not
+  introduce a bundler.
+- **Schema UI over HTML templates.** Legacy `effects/*.html` is
+  gone; new effects only need to ship `getConfigSchema()`. Bypass
+  toggle is prepended by the form (skipped if no `setBypassed`).
+- **Plugin identity = `manifest.id`.** Not the filename, not the
+  class name. Version is semver. `loadFromModule` finds the class
+  whose `manifest.id` matches.
+- **`updateConfig` is a deprecated alias for `applyConfig`.** Keep
+  it for back-compat in each effect.
+- **`EffectChainManager.addEffect(id, {index, params})` — object
+  options, not positional.**
+- **`PedalboardUI` wraps `ecm.onChange` (save-and-restore on
+  destroy)** so it never overwrites the history controller's hook.
+- **`HistoryController.applyExternal(snapshot)`** — push as new
+  current state, clears redo, undoable.
+- **Bus re-attaches on every chain rebuild** (added in hotfix).
+  Subscribed via `EffectChainManager.onChainRebuilt` hook.
+- **Mic re-attach on add** (added in hotfix). Any time the chain
+  contains a new `InputMic` and a live stream is available, call
+  `initStream(stream)`.
+- **Grip is the only draggable area on a card** (added in hotfix).
+  Card has `draggable="false"`, grip has `draggable="true"`.
+- **`AnalyserBus.attach` is a pure tap** (does not pass through
+  to destination). The destination connection is the manager's
+  responsibility. The analyser reads from its source via
+  `getByteFrequencyData` / `getFloatTimeDomainData`.
+
+---
+
+## Conventions
+
+- **Tests:** Vitest, one `*.test.js` per module under `test/unit/`.
+  All assertions must pass before a commit; the linter / typecheck
+  is `npx vitest run`. There is no separate lint or typecheck.
+- **Polyfill:** `test/setup.js` provides `MockAudioContext`,
+  `MockAudioParam`, `MockOscillatorNode`, `MockBufferSourceNode`,
+  `MockAnalyserNode` etc. Add new mock nodes there when a new
+  Web Audio node type is needed by tests.
+- **No comments in code** unless the user asks. Documentation lives
+  in `docs/`. JSDoc on exported APIs is fine.
+- **English only** in all new code, comments, and docs. Sweep
+  Russian out of pre-existing comments when touching the file.
+- **Commit messages:** imperative mood, scope prefix
+  (`feat(phase-Nx):`, `fix:`, `docs:`, `chore:`), body explains
+  *why* not *what*.
+- **Branch policy:** commit only to `dev`; push to `origin/dev`.
+  Never `git push --force`, `git rebase`, or amend prior commits
+  without explicit user instruction.
+
+---
+
+## How to recover from a reinit (runbook)
+
+1. `cd` to the repo (`C:\Users\borik\Desktop\AudioFX-main`).
+2. `git status` — confirm on `dev` and clean.
+3. `git log -20 --oneline` — see recent commits.
+4. Read this file in full.
+5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
+6. `npx vitest run` — confirm 199/199 baseline.
+7. Resume work in the **Open / upcoming work** section.
+8. Update this file at the top of every new commit.
+9. Push to `origin/dev` with `git push origin dev`.
+
+---
+
+## Open questions (deferred — do not act without user)
+
+- None currently. The previous open question (phase order) was
+  answered: full Phase 3 in order, then Phase 4. Phase 4 plan
+  confirmed (replace Pedalboard with Patchboard, add `docs/STATUS.md`).

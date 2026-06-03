@@ -14,18 +14,22 @@ import { serializeProject, deserializeProject } from "./persistence/project.js";
 import { DistortionCurve } from "./visualization/perEffect/DistortionCurve.js";
 import { BiquadResponse } from "./visualization/perEffect/BiquadResponse.js";
 import { DelayImpulse } from "./visualization/perEffect/DelayImpulse.js";
+import { InputMicLevel } from "./visualization/perEffect/InputMicLevel.js";
 import { InputFile } from "./effects/InputFile.js";
 import { InputOscillator } from "./effects/InputOscillator.js";
 
 /**
  * Per-effect live visualization factories, keyed by manifest id.
- * Each factory takes the effect and a canvas, returns a renderer
- * that can be added to the AnalyserBus.
+ * Each factory receives (effect, canvas, bus). The bus is exposed so
+ * factories that need a real-time AnalyserNode (mic level meter) can
+ * tap it without going through the bus's internal taps map.
  */
 const PER_EFFECT_VIZ = {
   distortion: (effect, canvas) => new DistortionCurve(canvas, effect),
   lowpass: (effect, canvas) => new BiquadResponse(canvas, effect.lowpassNode),
   delay: (effect, canvas) => new DelayImpulse(canvas, effect),
+  "input-mic": (effect, canvas, bus) =>
+    new InputMicLevel(canvas, bus.attach(`mic-${effect._cardId ?? "?"}`, effect.gainNode)),
 };
 
 function setStatus(msg, kind = "info") {
@@ -54,14 +58,29 @@ function buildRegistry() {
  * Wire the visualizer to the chain's last effect output. The bus owns
  * one AnalyserNode per tap key; both renderers read from the same
  * analyser using different methods (frequency vs time-domain).
+ *
+ * The bus re-attaches to the new last node on every chain rebuild via
+ * the manager's `onChainRebuilt` hook. Without this, mutations like
+ * "remove the last effect" or "clear the chain and add only the test
+ * oscillator" leave the bus tapping a dead node.
  */
 function setupVisualizer(audioContext, ecm) {
   const canvas = document.getElementById("visualizer");
   const modeSelect = document.getElementById("viz-mode");
   const bus = new AnalyserBus(audioContext);
 
-  const lastEffect = ecm.effectChain[ecm.effectChain.length - 1].audioNode;
-  bus.attach("output", lastEffect.output);
+  function attachOutputTap() {
+    bus.detach("output");
+    const last = ecm.effectChain[ecm.effectChain.length - 1]?.audioNode;
+    if (!last?.output) {
+      // No usable master: clear the canvas.
+      const ctx2d = canvas?.getContext("2d");
+      if (ctx2d && canvas) ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+    bus.attach("output", last.output);
+  }
+  attachOutputTap();
 
   // Per-effect live viz: one small canvas inside every card with a
   // registered factory. Each renderer joins the same rAF loop as the
@@ -77,7 +96,7 @@ function setupVisualizer(audioContext, ecm) {
       if (!factory) continue;
       const small = card.querySelector(".pe-viz canvas");
       if (!small) continue;
-      perEffectRenderers.push(factory(effectObj.audioNode, small));
+      perEffectRenderers.push(factory(effectObj.audioNode, small, bus));
     }
     for (const r of perEffectRenderers) bus.addRenderer(r);
   }
@@ -88,8 +107,23 @@ function setupVisualizer(audioContext, ecm) {
     setTimeout(syncPerEffect, 0);
   };
 
+  // Re-attach the output tap to the new last node on every chain
+  // rebuild. The hook fires AFTER rebuildAudioChain, so the chain is
+  // in its final state.
+  ecm.onChainRebuilt = () => {
+    attachOutputTap();
+    // The main visualizer holds onto the old analyser. If the mode
+    // is spectrum/waveform, re-create it so it reads from the new
+    // tap. (skip if mode is "off" — there's no active renderer).
+    if (activeMode !== "off") {
+      setMode(activeMode);
+    }
+  };
+
+  let activeMode = modeSelect.value;
   let activeRenderer = null;
   function setMode(mode) {
+    activeMode = mode;
     if (activeRenderer) {
       bus.removeRenderer(activeRenderer);
       activeRenderer = null;
@@ -171,8 +205,35 @@ async function initAudio() {
   });
   ecm.onChange = () => history.push();
 
+  /**
+   * Track which InputMic instances already have a live stream so we
+   * don't re-init them on every chain change. The set is updated
+   * lazily — if a mic is removed, its entry stays until the next
+   * add, which creates a new instance and is wired up fresh.
+   */
+  const wiredMics = new WeakSet();
+  function wireNewMics() {
+    for (const entry of ecm.effectChain) {
+      if (entry.audioNode instanceof InputMic && !wiredMics.has(entry.audioNode)) {
+        entry.audioNode.initStream(stream);
+        wiredMics.add(entry.audioNode);
+      }
+    }
+  }
+
+  // Wrap onChange so wireNewMics runs after every mutation AND after
+  // history restores. PedalboardUI also wraps onChange (later in this
+  // file) — this wrapper is the "outer" one in the chain so it runs
+  // first.
+  const _onChange = ecm.onChange;
+  ecm.onChange = () => {
+    if (_onChange) _onChange();
+    wireNewMics();
+  };
+
   const inputMic = (await ecm.addEffect("input-mic")).audioNode;
   inputMic.initStream(stream);
+  wiredMics.add(inputMic);
 
   await ecm.addEffect("distortion");
   await ecm.addEffect("lowpass");

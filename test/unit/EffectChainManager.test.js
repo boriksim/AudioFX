@@ -124,6 +124,20 @@ describe("EffectChainManager", () => {
     expect(true).toBe(true);
   });
 
+  it("onChainRebuilt fires after rebuildAudioChain", () => {
+    const spy = vi.fn();
+    manager.onChainRebuilt = spy;
+    manager.rebuildAudioChain();
+    expect(spy).toHaveBeenCalledOnce();
+  });
+
+  it("onChainRebuilt is not fired by mutating state without rebuilding", () => {
+    const spy = vi.fn();
+    manager.onChainRebuilt = spy;
+    manager.effectChain.push(makeMockEffect("A"));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("clear() removes every effect", () => {
     const a = makeMockEffect("A");
     const b = makeMockEffect("B");

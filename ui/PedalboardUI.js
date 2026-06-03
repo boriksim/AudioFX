@@ -93,20 +93,16 @@ export class PedalboardUI {
   }
 
   _wireCard(card) {
-    // Drag handle: the whole card is the drag target, but we must NOT
-    // start a drag when the user is interacting with a real control
-    // (range slider, select, button, file input, etc.). Without this
-    // guard, dragging a slider knob drags the whole card and the
-    // slider value never changes.
-    card.setAttribute("draggable", "true");
+    // The card body is a DROP target only. The grip element is the
+    // sole DRAG source. This is the only way to fully decouple card
+    // reorder from control interaction: the browser never starts a
+    // drag on the card's sliders/selects/buttons because none of
+    // them are draggable, and the grip is the only thing that is.
+    card.setAttribute("draggable", "false");
     card.addEventListener("dragstart", (e) => {
-      if (!this._shouldStartDrag(e.target, card)) {
-        e.preventDefault();
-        return;
-      }
-      e.dataTransfer.setData("text/plain", card.dataset.effectId);
-      e.dataTransfer.effectAllowed = "move";
-      card.classList.add("dragging");
+      // Should never fire (the card isn't draggable), but guard
+      // against future code that flips the attribute.
+      e.preventDefault();
     });
     card.addEventListener("dragend", () => {
       card.classList.remove("dragging");
@@ -150,12 +146,24 @@ export class PedalboardUI {
     }
 
     // Drag handle indicator — a small grippy top-left affordance.
+    // This is the ONLY draggable area on the card. The card itself
+    // has draggable="false" so sliders, selects, and buttons never
+    // trigger a card drag.
     if (!card.querySelector(".pb-grip")) {
       const grip = document.createElement("div");
       grip.className = "pb-grip";
       grip.textContent = "⋮⋮";
       grip.title = "Drag to reorder";
+      grip.setAttribute("draggable", "true");
       grip.setAttribute("aria-hidden", "true");
+      grip.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", card.dataset.effectId);
+        e.dataTransfer.effectAllowed = "move";
+        card.classList.add("dragging");
+      });
+      grip.addEventListener("dragend", () => {
+        card.classList.remove("dragging");
+      });
       card.prepend(grip);
     }
 
@@ -189,24 +197,6 @@ export class PedalboardUI {
     if (!effectObj) return;
     const bypassed = !!effectObj.audioNode?.bypass;
     card.classList.toggle("bypassed", bypassed);
-  }
-
-  /**
-   * True if a drag that started on `target` should be treated as a
-   * reorder (vs. a control interaction that should be allowed to
-   * proceed). The grip itself always wins; bare label/text areas
-   * count as drag handles; form controls, buttons, the per-effect
-   * viz canvas, and the source action bar do NOT.
-   */
-  _shouldStartDrag(target, card) {
-    if (target === card) return true;
-    if (target.closest?.(".pb-grip")) return true;
-    if (target.closest?.(
-      "input, select, textarea, button, .pb-remove, .pe-viz, .source-actions, form.schema-form"
-    )) {
-      return false;
-    }
-    return true;
   }
 
   /**

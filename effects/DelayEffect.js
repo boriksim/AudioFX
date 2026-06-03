@@ -1,6 +1,18 @@
-import AbstractEffectNode from '../core/AbstractEffectNode.js';
+import BaseEffect from '../core/BaseEffect.js';
 
-export class DelayEffect extends AbstractEffectNode {
+export class DelayEffect extends BaseEffect {
+  static manifest = {
+    id: "delay",
+    name: "Delay",
+    version: "1.0.0",
+    category: "time",
+    description: "Delay line with feedback loop",
+    tags: ["delay", "echo", "time"],
+    inputChannels: 2,
+    outputChannels: 2,
+    assets: { html: "DelayEffect.html" },
+  };
+
   constructor(audioContext, domElement) {
     super(audioContext, domElement);
 
@@ -154,13 +166,26 @@ export class DelayEffect extends AbstractEffectNode {
     };
   }
 
+  getConfig() {
+    return {
+      ...super.getConfig(),
+      delayTime: this.delayNode.delayTime.value,
+      feedback: this.feedbackGain.gain.value,
+    };
+  }
+
+  applyConfig(config) {
+    super.applyConfig(config);
+    if (typeof config.delayTime === "number") {
+      this.delayNode.delayTime.value = config.delayTime;
+    }
+    if (typeof config.feedback === "number") {
+      this.feedbackGain.gain.value = config.feedback;
+    }
+  }
+
+  /** @deprecated Use applyConfig; kept for backward compat with existing UI bindings. */
   updateConfig({ delayTime, feedback, mix }) {
-    super.updateConfig({ mix })
-    if (typeof delayTime === "number") {
-      this.delayNode.delayTime.value = delayTime;
-    }
-    if (typeof feedback === "number") {
-      this.feedbackGain.gain.value = feedback;
-    }
+    this.applyConfig({ delayTime, feedback, mix });
   }
 }

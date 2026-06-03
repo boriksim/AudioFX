@@ -1,8 +1,25 @@
 import { EffectChainManager } from "./core/EffectChainManager.js";
+import { PluginRegistry } from "./core/PluginRegistry.js";
+import { InputMic } from "./effects/InputMic.js";
+import { DistortionEffect } from "./effects/DistortionEffect.js";
+import { LowpassEffect } from "./effects/LowpassEffect.js";
+import { DelayEffect } from "./effects/DelayEffect.js";
+
+/**
+ * Build a registry pre-populated with the built-in effects. Each class
+ * is registered by its static `manifest.id`, which is the canonical
+ * identifier used in serialization, the UI, and `addEffect()` calls.
+ */
+function buildRegistry() {
+  return new PluginRegistry()
+    .register(InputMic)
+    .register(DistortionEffect)
+    .register(LowpassEffect)
+    .register(DelayEffect);
+}
 
 /**
  * Build the default chain: mic -> [optional effects] -> destination.
- * The mic source has no input; effects connect head-to-tail.
  *
  * Latency choices:
  *  - `latencyHint: 'interactive'` biases the browser toward the smallest
@@ -29,14 +46,15 @@ async function initAudio() {
     },
   });
 
-  const ecm = new EffectChainManager(audioContext);
+  const registry = buildRegistry();
+  const ecm = new EffectChainManager(audioContext, "#effects-container", registry);
 
-  const inputMic = (await ecm.addEffect("InputMic")).audioNode;
+  const inputMic = (await ecm.addEffect("input-mic")).audioNode;
   inputMic.initStream(stream);
 
-  await ecm.addEffect("DistortionEffect");
-  await ecm.addEffect("LowpassEffect");
-  await ecm.addEffect("DelayEffect");
+  await ecm.addEffect("distortion");
+  await ecm.addEffect("lowpass");
+  await ecm.addEffect("delay");
 
   const latency = ecm.getLatency();
   console.log("Audio context state:", audioContext.state);
@@ -48,8 +66,9 @@ async function initAudio() {
     (latency.outputLatency * 1000).toFixed(2), "ms,",
     "total:", (latency.total * 1000).toFixed(2), "ms"
   );
-  console.log("Effect chain:", ecm.effectChain.map(e => e.name));
-  return { audioContext, ecm };
+  console.log("Effect chain:", ecm.effectChain.map((e) => e.name));
+  console.log("Available effects:", registry.list().map((m) => `${m.id}@${m.version}`).join(", "));
+  return { audioContext, ecm, registry };
 }
 
 document.addEventListener('DOMContentLoaded', () => {

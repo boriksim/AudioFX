@@ -1,6 +1,18 @@
 import AbstractAudioNode from "../core/AbstractAudioNode.js";
 
 export class InputMic extends AbstractAudioNode {
+  static manifest = {
+    id: "input-mic",
+    name: "Microphone Input",
+    version: "1.0.0",
+    category: "source",
+    description: "Live microphone input via getUserMedia",
+    tags: ["input", "source", "microphone"],
+    inputChannels: 0,
+    outputChannels: 2,
+    assets: { html: "InputMic.html" },
+  };
+
     constructor(audioContext, domElement) {
         super(audioContext);
         this.audioContext = audioContext;
@@ -104,29 +116,58 @@ export class InputMic extends AbstractAudioNode {
 
     initUI() {
         this.channelRadios = this.domElement.querySelectorAll('[data-channel-mic]');
-        this.channelRadios.forEach((radio) => {
-            radio.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    this.channelMode = e.target.value;
-                    this.setupRouting();
-                }
+        if (this.channelRadios.length) {
+            this.channelRadios.forEach((radio) => {
+                radio.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        this.channelMode = e.target.value;
+                        this.setupRouting();
+                    }
+                });
             });
-        });
+        }
 
         this.monoCheckbox = this.domElement.querySelector('[data-mono-mic]');
-        this.monoCheckbox.addEventListener('change', (e) => {
-            this.convertToMono = e.target.checked;
-            this.setupRouting();
-        });
+        if (this.monoCheckbox) {
+            this.monoCheckbox.addEventListener('change', (e) => {
+                this.convertToMono = e.target.checked;
+                this.setupRouting();
+            });
+        }
 
         this.gainSlider = this.domElement.querySelector('[data-gain-mic]');
         this.gainValueDisplay = this.domElement.querySelector('[data-gain-mic-value]');
-        this.gainSlider.addEventListener('input', (e) => {
-            const gain = parseFloat(e.target.value);
-            this.gainNode.gain.value = gain;
-            if (this.gainValueDisplay) {
-                this.gainValueDisplay.textContent = (gain - 1).toFixed(2);
+        if (this.gainSlider) {
+            this.gainSlider.addEventListener('input', (e) => {
+                const gain = parseFloat(e.target.value);
+                this.gainNode.gain.value = gain;
+                if (this.gainValueDisplay) {
+                    this.gainValueDisplay.textContent = (gain - 1).toFixed(2);
+                }
+            });
+        }
+    }
+
+    getConfig() {
+        return {
+            channelMode: this.channelMode,
+            convertToMono: this.convertToMono,
+            gain: this.gainNode.gain.value,
+        };
+    }
+
+    applyConfig(config = {}) {
+        if (typeof config.gain === "number") {
+            this.gainNode.gain.value = config.gain;
+        }
+        if (typeof config.channelMode === "string" || typeof config.convertToMono === "boolean") {
+            if (typeof config.channelMode === "string") {
+                this.channelMode = config.channelMode;
             }
-        });
+            if (typeof config.convertToMono === "boolean") {
+                this.convertToMono = config.convertToMono;
+            }
+            if (this.stream) this.setupRouting();
+        }
     }
 }

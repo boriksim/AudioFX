@@ -1,6 +1,18 @@
-import AbstractEffectNode from "../core/AbstractEffectNode.js"
+import BaseEffect from "../core/BaseEffect.js"
 
-export class DistortionEffect extends AbstractEffectNode {
+export class DistortionEffect extends BaseEffect {
+  static manifest = {
+    id: "distortion",
+    name: "Distortion",
+    version: "1.0.0",
+    category: "distortion",
+    description: "WaveShaper-based distortion with multiple curve types",
+    tags: ["waveshaper", "saturation"],
+    inputChannels: 2,
+    outputChannels: 2,
+    assets: { html: "DistortionEffect.html" },
+  };
+
   constructor(audioContext, domElement) {
     super(audioContext, domElement)
 
@@ -199,10 +211,23 @@ export class DistortionEffect extends AbstractEffectNode {
     };
   }
 
+  getConfig() {
+    return {
+      ...super.getConfig(),
+      strength: this.strength,
+      type: this.type,
+    };
+  }
+
+  applyConfig(config) {
+    super.applyConfig(config);
+    if (typeof config.strength === "number") this.setStrength(config.strength);
+    if (typeof config.type === "string") this.setType(config.type);
+  }
+
+  /** @deprecated Use applyConfig; kept for backward compat with existing UI bindings. */
   updateConfig({ strength, type, mix }) {
-    super.updateConfig({ mix });
-    if (typeof strength === "number") this.setStrength(strength);
-    if (typeof type === "string") this.setType(type);
+    this.applyConfig({ strength, type, mix });
   }
 
 }

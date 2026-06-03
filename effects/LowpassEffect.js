@@ -1,6 +1,18 @@
-import AbstractEffectNode from "../core/AbstractEffectNode.js"
+import BaseEffect from "../core/BaseEffect.js"
 
-export class LowpassEffect extends AbstractEffectNode {
+export class LowpassEffect extends BaseEffect {
+  static manifest = {
+    id: "lowpass",
+    name: "Lowpass Filter",
+    version: "1.0.0",
+    category: "filter",
+    description: "Single-pole biquad lowpass filter",
+    tags: ["filter", "biquad", "lowpass"],
+    inputChannels: 2,
+    outputChannels: 2,
+    assets: { html: "LowpassEffect.html" },
+  };
+
   constructor(audioContext, domElement) {
     super(audioContext, domElement);
 
@@ -104,8 +116,20 @@ export class LowpassEffect extends AbstractEffectNode {
     };
   }
 
+  getConfig() {
+    return {
+      ...super.getConfig(),
+      frequency: this.lowpassNode.frequency.value,
+    };
+  }
+
+  applyConfig(config) {
+    super.applyConfig(config);
+    if (typeof config.frequency === "number") this.setFrequency(config.frequency);
+  }
+
+  /** @deprecated Use applyConfig; kept for backward compat with existing UI bindings. */
   updateConfig({ lowpassFrequency, mix }) {
-    super.updateConfig({ mix });
-    if (typeof lowpassFrequency === "number") this.setFrequency(lowpassFrequency);
+    this.applyConfig({ frequency: lowpassFrequency, mix });
   }
 }

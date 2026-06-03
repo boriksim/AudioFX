@@ -2,35 +2,73 @@
 // Supports adding, removing, moving, and rebuilding the audio chain.
 // Each effect ships its own HTML template and JS module; the manager
 // orchestrates loading, DOM mounting, and graph wiring.
+//
+// As of Phase 2a, the manager optionally accepts a PluginRegistry. When
+// a registry is provided, `addEffect(id)` resolves the effect by its
+// manifest id (the canonical identifier used in serialization), and the
+// HTML template path is read from `manifest.assets.html`. Without a
+// registry the manager falls back to the legacy "id is the class name
+// and the file basename" behavior.
 
 export class EffectChainManager {
   /**
    * @param {AudioContext} audioContext
    * @param {string} containerSelector - CSS selector for the DOM container
    *   that holds effect UI cards.
+   * @param {object} [registry] - optional PluginRegistry. When provided,
+   *   `addEffect(id)` resolves effects through the registry by manifest id.
    */
-  constructor(audioContext, containerSelector = '#effects-container') {
+  constructor(audioContext, containerSelector = '#effects-container', registry = null) {
     this.audioContext = audioContext;
     this.container = document.querySelector(containerSelector);
     this.effectChain = [];
     this.idCounter = 1;
+    this.registry = registry;
   }
 
   /**
    * Add a new effect to the chain.
-   * @param {string} effectName - Effect class name; must match
-   *   `effects/${effectName}.html` and `effects/${effectName}.js`.
+   * @param {string} effectId - When a registry is provided, this is the
+   *   effect's manifest id (canonical, used in serialization). In legacy
+   *   mode (no registry), this is also the class name and the HTML
+   *   file basename.
    * @param {number} [index] - Insertion position; defaults to end of chain.
-   * @returns {Promise<{id, name, dom, audioNode}>}
+   * @returns {Promise<{id, name, manifestId, dom, audioNode}>}
    */
-  async addEffect(effectName, index = this.effectChain.length) {
-    const response = await fetch(`effects/${effectName}.html`);
+  async addEffect(effectId, index = this.effectChain.length) {
+    let EffectClass;
+    let htmlPath;
+    let displayName;
+    let manifestId = null;
+
+    if (this.registry) {
+      const entry = this.registry.get(effectId);
+      if (!entry) {
+        const known = this.registry.list().map((m) => m.id).join(", ");
+        throw new Error(`Effect '${effectId}' is not registered. Known: ${known || "(none)"}`);
+      }
+      EffectClass = entry.EffectClass;
+      const { manifest } = entry;
+      displayName = manifest.name ?? effectId;
+      htmlPath = manifest.assets?.html;
+      manifestId = manifest.id;
+      if (!htmlPath) {
+        throw new Error(`Effect '${effectId}' manifest is missing assets.html`);
+      }
+    } else {
+      // Legacy: effectId is also the class name and the file basename.
+      EffectClass = (await import(`../effects/${effectId}.js`))[effectId];
+      htmlPath = `${effectId}.html`;
+      displayName = effectId;
+    }
+
+    const response = await fetch(`effects/${htmlPath}`);
     const html = await response.text();
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'effect-instance';
-    const effectId = `fx-${effectName.toLowerCase()}-${this.idCounter++}`;
-    wrapper.dataset.effectId = effectId;
+    const wrapper = document.createElement("div");
+    wrapper.className = "effect-instance";
+    const instanceId = `fx-${effectId.toLowerCase()}-${this.idCounter++}`;
+    wrapper.dataset.effectId = instanceId;
     wrapper.innerHTML = html;
 
     if (index >= this.container.children.length) {
@@ -39,14 +77,12 @@ export class EffectChainManager {
       this.container.insertBefore(wrapper, this.container.children[index]);
     }
 
-    const module = await import(`../effects/${effectName}.js`);
-    const EffectClass = module[effectName];
-
     const effectInstance = new EffectClass(this.audioContext, wrapper);
 
     const effectObj = {
-      id: effectId,
-      name: effectName,
+      id: instanceId,
+      name: displayName,
+      manifestId,
       dom: wrapper,
       audioNode: effectInstance,
     };

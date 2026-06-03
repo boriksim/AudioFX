@@ -149,4 +149,25 @@ export class HistoryController {
     this._pending = null;
     this._emit();
   }
+
+  /**
+   * Apply an external snapshot (e.g. loaded from a preset) and push
+   * it onto the undo stack as the new current state. The previous
+   * top of the undoStack was the old current state — we keep it
+   * intact so the user can undo the load. The redo stack is cleared
+   * because a load invalidates any pending redo path.
+   */
+  applyExternal(snapshot) {
+    this.flush();
+    if (this._shouldCommit()) {
+      this._undoStack.push(snapshot);
+      if (this._undoStack.length > this._maxSize) {
+        this._undoStack.splice(0, this._undoStack.length - this._maxSize);
+      }
+      this._redoStack = [];
+    }
+    const result = this._apply(snapshot);
+    this._emit();
+    return result;
+  }
 }

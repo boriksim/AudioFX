@@ -42,6 +42,7 @@ export class PresetManagerUI {
     this.exportButton = dom.exportButton ?? document.getElementById("export-project");
     this.importInput = dom.importInput ?? document.getElementById("import-project");
     this._onStatus = () => {};
+    this._onLoad = null;
 
     this._wire();
     this.refresh();
@@ -50,6 +51,16 @@ export class PresetManagerUI {
   /** @param {(msg: string, kind: "info" | "error") => void} fn */
   onStatus(fn) {
     this._onStatus = fn;
+  }
+
+  /**
+   * Subscribe to preset loads. The runtime can hook this to route
+   * loads through its own re-attach + history path so the chain
+   * rebuild doesn't strand the live mic stream.
+   * @param {(project: object) => void} fn
+   */
+  onLoad(fn) {
+    this._onLoad = fn;
   }
 
   _wire() {
@@ -104,9 +115,14 @@ export class PresetManagerUI {
     if (!file) return;
     try {
       const project = await importProjectFile(file);
-      this.ecm.clear();
-      await deserializeProject(project, this.ecm);
-      this._onStatus(`Imported '${project.name}'`, "info");
+      if (this._onLoad) {
+        this._onLoad(project);
+        this._onStatus(`Imported '${project.name}'`, "info");
+      } else {
+        this.ecm.clear();
+        await deserializeProject(project, this.ecm);
+        this._onStatus(`Imported '${project.name}'`, "info");
+      }
     } catch (err) {
       this._onStatus(`Import failed: ${err.message}`, "error");
     } finally {
@@ -118,6 +134,17 @@ export class PresetManagerUI {
   _handleLoad(name) {
     const project = getPreset(name);
     if (!project) return;
+    if (this._onLoad) {
+      // Let the runtime rebuild the chain (it can re-attach sources
+      // and record the change in history). The status message is the
+      // runtime's responsibility.
+      try {
+        this._onLoad(project);
+      } catch (err) {
+        this._onStatus(`Load failed: ${err.message}`, "error");
+      }
+      return;
+    }
     this.ecm.clear();
     deserializeProject(project, this.ecm)
       .then(() => this._onStatus(`Loaded '${name}'`, "info"))

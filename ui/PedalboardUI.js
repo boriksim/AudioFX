@@ -93,11 +93,17 @@ export class PedalboardUI {
   }
 
   _wireCard(card) {
-    // Drag handle: any drag on the card (not on a form input) starts
-    // a reorder. We use the whole card as the handle because the
-    // pedalboard metaphor is "grab the whole pedal and move it".
+    // Drag handle: the whole card is the drag target, but we must NOT
+    // start a drag when the user is interacting with a real control
+    // (range slider, select, button, file input, etc.). Without this
+    // guard, dragging a slider knob drags the whole card and the
+    // slider value never changes.
     card.setAttribute("draggable", "true");
     card.addEventListener("dragstart", (e) => {
+      if (!this._shouldStartDrag(e.target, card)) {
+        e.preventDefault();
+        return;
+      }
       e.dataTransfer.setData("text/plain", card.dataset.effectId);
       e.dataTransfer.effectAllowed = "move";
       card.classList.add("dragging");
@@ -183,6 +189,24 @@ export class PedalboardUI {
     if (!effectObj) return;
     const bypassed = !!effectObj.audioNode?.bypass;
     card.classList.toggle("bypassed", bypassed);
+  }
+
+  /**
+   * True if a drag that started on `target` should be treated as a
+   * reorder (vs. a control interaction that should be allowed to
+   * proceed). The grip itself always wins; bare label/text areas
+   * count as drag handles; form controls, buttons, the per-effect
+   * viz canvas, and the source action bar do NOT.
+   */
+  _shouldStartDrag(target, card) {
+    if (target === card) return true;
+    if (target.closest?.(".pb-grip")) return true;
+    if (target.closest?.(
+      "input, select, textarea, button, .pb-remove, .pe-viz, .source-actions, form.schema-form"
+    )) {
+      return false;
+    }
+    return true;
   }
 
   /**

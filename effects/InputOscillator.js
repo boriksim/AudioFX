@@ -33,7 +33,7 @@ export class InputOscillator extends AbstractAudioNode {
     this.osc.type = "sine";
     this.osc.frequency.value = 440;
     this.gainNode = audioContext.createGain();
-    this.gainNode.gain.value = 0.0; // silent until start()
+    this.gainNode.gain.value = 0.2;
     this.osc.connect(this.gainNode);
     this.started = false;
     this.output = this.gainNode;

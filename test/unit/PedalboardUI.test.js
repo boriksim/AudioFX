@@ -150,4 +150,37 @@ describe("PedalboardUI", () => {
     pb.destroy();
     expect(ecm2.onChange).toBe(original);
   });
+
+  it("dragstart on a range slider does NOT initiate a reorder (regression)", () => {
+    // Regression: dragging the slider knob used to drag the whole card.
+    // After the fix, dragstart on an <input> calls preventDefault and
+    // the card never enters the dragging state.
+    const card = ecm.effectChain[0].dom;
+    // The schema form's first range input is the mix slider.
+    const slider = card.querySelector('input[type="range"]');
+    expect(slider).toBeTruthy();
+    drag(slider, "dragstart");
+    expect(card.classList.contains("dragging")).toBe(false);
+  });
+
+  it("dragstart on a button or the remove button does NOT initiate a reorder", () => {
+    const card = ecm.effectChain[0].dom;
+    const removeBtn = card.querySelector(".pb-remove");
+    drag(removeBtn, "dragstart");
+    expect(card.classList.contains("dragging")).toBe(false);
+  });
+
+  it("dragstart on the grip element initiates a reorder", () => {
+    const card = ecm.effectChain[0].dom;
+    const grip = card.querySelector(".pb-grip");
+    expect(grip).toBeTruthy();
+    drag(grip, "dragstart", card.dataset.effectId);
+    expect(card.classList.contains("dragging")).toBe(true);
+  });
+
+  it("dragstart on the card itself (bare background) initiates a reorder", () => {
+    const card = ecm.effectChain[0].dom;
+    drag(card, "dragstart", card.dataset.effectId);
+    expect(card.classList.contains("dragging")).toBe(true);
+  });
 });

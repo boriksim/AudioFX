@@ -142,11 +142,11 @@ describe("InputOscillator", () => {
     expect(InputOscillator.manifest.category).toBe("source");
   });
 
-  it("constructor starts the oscillator (with gain 0)", () => {
+  it("constructor starts the oscillator (with audible default gain)", () => {
     const ctx = new AudioContext();
     const fx = new InputOscillator(ctx, document.createElement("div"));
     expect(fx.osc).toBeTruthy();
-    expect(fx.gainNode.gain.value).toBe(0);
+    expect(fx.gainNode.gain.value).toBe(0.2);
     expect(fx.started).toBe(true);
     expect(typeof fx.osc.start).toBe("function");
   });
@@ -191,7 +191,7 @@ describe("InputOscillator", () => {
     const c = fx.getConfig();
     expect(c.frequency).toBe(440);
     expect(c.type).toBe("sine");
-    expect(c.gain).toBe(0);
+    expect(c.gain).toBe(0.2);
   });
 
   it("getConfigSchema exposes type/frequency/gain", () => {

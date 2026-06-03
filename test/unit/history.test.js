@@ -206,4 +206,21 @@ describe("HistoryController", () => {
       }, 10);
     });
   });
+
+  it("applyExternal applies the snapshot and pushes it as the new current state", () => {
+    // Initial state: undoStack = [A] (captureInitial), state.value = 0
+    history.applyExternal({ value: 99 });
+    expect(state.value).toBe(99);
+    const s = history.state();
+    expect(s.undoDepth).toBe(2);
+    expect(s.canUndo).toBe(true);
+    expect(s.canRedo).toBe(false);
+  });
+
+  it("applyExternal is undoable: undo returns to the pre-load state", () => {
+    history.applyExternal({ value: 99 });
+    // Stack is now [A={value:0}, {value:99}]. Undo pops 99, restores 0.
+    history.undo();
+    expect(state.value).toBe(0);
+  });
 });

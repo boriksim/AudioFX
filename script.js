@@ -150,15 +150,23 @@ async function initAudio() {
     { useSchemaUI: true, onChange: null }, // set after history is built
   );
 
+  /**
+   * Re-attach the live mic stream to whichever InputMic sits at the
+   * head of the chain. Called by both the history apply() and the
+   * preset load path, so any chain mutation that re-creates the
+   * source can resume the live input.
+   */
+  async function reattachMic() {
+    const mic = ecm.effectChain[0]?.audioNode;
+    if (mic instanceof InputMic) await mic.initStream(stream);
+  }
+
   const history = new HistoryController({
     snapshot: () => serializeProject(ecm),
     apply: async (project) => {
-      // Restore a snapshot: clear the chain, deserialize, then
-      // re-attach the mic stream so the source is live again.
       ecm.clear();
       await deserializeProject(project, ecm);
-      const mic = ecm.effectChain[0]?.audioNode;
-      if (mic instanceof InputMic) mic.initStream(stream);
+      await reattachMic();
     },
   });
   ecm.onChange = () => history.push();
@@ -183,6 +191,12 @@ async function initAudio() {
 
   const presetUI = new PresetManagerUI(ecm);
   presetUI.onStatus((msg, kind) => setStatus(msg, kind));
+  // Route preset loads through the same apply() path as undo/redo so
+  // the mic stream is re-attached and the load is recorded in history.
+  presetUI.onLoad((project) => {
+    history.applyExternal(project);
+    setStatus(`Loaded '${project.name}'`);
+  });
 
   // Wire undo / redo to the buttons and keep them in sync with the
   // controller's state.

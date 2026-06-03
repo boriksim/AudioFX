@@ -105,6 +105,23 @@ class MockAudioContext {
     this.baseLatency = 0.005;
     this.outputLatency = 0.020;
     this._nodeRegistry = [];
+    this._listeners = {};
+  }
+
+  addEventListener(type, fn) {
+    if (!this._listeners[type]) this._listeners[type] = [];
+    this._listeners[type].push(fn);
+  }
+
+  removeEventListener(type, fn) {
+    if (!this._listeners[type]) return;
+    this._listeners[type] = this._listeners[type].filter((f) => f !== fn);
+  }
+
+  dispatchEvent(event) {
+    const list = this._listeners[event.type] ?? [];
+    for (const fn of list) fn(event);
+    return true;
   }
 
   _create(type, ...args) {

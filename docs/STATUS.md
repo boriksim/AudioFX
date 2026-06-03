@@ -15,7 +15,7 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 239 passing across 22 test files.
+- **Last known good test count:** 251 passing across 23 test files.
   (Updated at the top of every commit.)
 
 ---
@@ -89,14 +89,26 @@ then resume the next-steps section below.**
   `_isChainConnection` use the same logic. `PatchboardUI._renderPorts`
   renders one port dot per declared port, stacked vertically when
   more than one.
+- **Phase 5 — Profiling & docs:** `engine/Profiler.js` tracks
+  per-frame render time, audio context state transitions,
+  `outputLatency`, and main-thread long tasks via
+  `PerformanceObserver`. `AnalyserBus` accepts an `onFrame`
+  option so the runtime can pipe frame timings to the Profiler.
+  `script.js` creates a Profiler and exposes it as
+  `window.__profiler` for debugging. `docs/PERFORMANCE.md`
+  documents the latency budget, throughput, the Profiler's
+  stats, and a field checklist for "audio is glitchy" reports.
+  Test polyfill extended: `MockAudioContext` now has
+  `addEventListener`/`removeEventListener`/`dispatchEvent` so
+  the Profiler can subscribe to `statechange` in tests.
 
 ---
 
 ## Open / upcoming work
 
-### Phase 5 — Profiling & docs
-`engine/Profiler.js` (per-node CPU time, render quantum histogram,
-drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
+(none — all phases 1-5 of `docs/ARCHITECTURE.md` are complete
+on `dev`. Future work beyond the original plan can be
+proposed by the user.)
 
 ---
 
@@ -162,6 +174,14 @@ drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
   so explicit `connect()` calls don't duplicate chain order.
   The PatchboardUI renders one port dot per declared port,
   stacked vertically for multi-port cards.
+- **Profiler (Phase 5):** `engine/Profiler.js` is a stateful
+  observer. `recordFrame(durationMs)` adds to a rolling window
+  (default 5s). `start()` subscribes to `statechange` and
+  `PerformanceObserver({entryTypes: ["longtask"]})`. `stop()`
+  detaches both. `getStats()` returns aggregate stats.
+  `subscribe(fn)` notifies on every event; exceptions are
+  isolated. `AnalyserBus` accepts an `onFrame` option for the
+  runtime to wire the Profiler into the rAF tick.
 
 ---
 
@@ -194,7 +214,7 @@ drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 239/239 baseline.
+6. `npx vitest run` — confirm 251/251 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.
@@ -203,6 +223,6 @@ drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
 
 ## Open questions (deferred — do not act without user)
 
-- None currently. The previous open question (phase order) was
-  answered: full Phase 3 in order, then Phase 4. Phase 4 plan
-  confirmed (replace Pedalboard with Patchboard, add `docs/STATUS.md`).
+- None currently. All phases 1-5 of `docs/ARCHITECTURE.md` are
+  complete on `dev`. Future work beyond the original plan can
+  be proposed by the user.

@@ -20,8 +20,13 @@
 export class AnalyserBus {
   /**
    * @param {AudioContext} audioContext
+   * @param {object} [options]
+   * @param {(stats: {durationMs: number, frame: number}) => void} [options.onFrame]
+   *   optional callback fired at the end of every rAF tick. The
+   *   Profiler subscribes via this hook to record per-frame render
+   *   times.
    */
-  constructor(audioContext) {
+  constructor(audioContext, options = {}) {
     this.audioContext = audioContext;
     /** @type {Map<string, AnalyserNode>} */
     this.taps = new Map();
@@ -29,6 +34,8 @@ export class AnalyserBus {
     this.renderers = new Set();
     this._running = false;
     this._rafId = 0;
+    this._frameCounter = 0;
+    this._onFrame = typeof options.onFrame === "function" ? options.onFrame : null;
     this._onVisibility = () => {
       if (document.hidden) this._stopLoop();
       else this._startLoop();
@@ -106,12 +113,20 @@ export class AnalyserBus {
     this._running = true;
     const tick = () => {
       if (!this._running) return;
+      const start = (typeof performance !== "undefined" ? performance.now() : Date.now());
       for (const r of this.renderers) {
         try {
           r.render();
         } catch (err) {
           console.error("AnalyserBus renderer threw:", err);
         }
+      }
+      const end = (typeof performance !== "undefined" ? performance.now() : Date.now());
+      this._frameCounter++;
+      if (this._onFrame) {
+        try {
+          this._onFrame({ durationMs: end - start, frame: this._frameCounter });
+        } catch (_) { /* isolate */ }
       }
       this._rafId = requestAnimationFrame(tick);
     };

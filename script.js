@@ -6,6 +6,7 @@ import { LowpassEffect } from "./effects/LowpassEffect.js";
 import { DelayEffect } from "./effects/DelayEffect.js";
 import { ChannelSplitter } from "./effects/ChannelSplitter.js";
 import { AnalyserBus } from "./engine/AnalyserBus.js";
+import { Profiler } from "./engine/Profiler.js";
 import { SpectrumBars } from "./visualization/renderers/SpectrumBars.js";
 import { Waveform } from "./visualization/renderers/Waveform.js";
 import { PresetManagerUI } from "./ui/PresetManager.js";
@@ -69,7 +70,16 @@ function buildRegistry() {
 function setupVisualizer(audioContext, ecm) {
   const canvas = document.getElementById("visualizer");
   const modeSelect = document.getElementById("viz-mode");
-  const bus = new AnalyserBus(audioContext);
+  // Profiler observes frame timings, audio context state changes,
+  // and main-thread long tasks. The bus notifies it on every
+  // rAF tick.
+  const profiler = new Profiler(audioContext);
+  profiler.start();
+  // Expose for debugging in the browser console.
+  if (typeof window !== "undefined") window.__profiler = profiler;
+  const bus = new AnalyserBus(audioContext, {
+    onFrame: ({ durationMs }) => profiler.recordFrame(durationMs),
+  });
 
   function attachOutputTap() {
     bus.detach("output");

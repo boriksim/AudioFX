@@ -106,12 +106,22 @@ export class LowpassEffect extends BaseEffect {
 
   getConfigSchema() {
     return {
+      mix: {
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: this.mix,
+        label: "Mix",
+      },
       lowpassFrequency: {
         type: "range",
         min: 100,
         max: 16000,
         step: 10,
         value: this.lowpassNode.frequency.value,
+        label: "Frequency",
+        unit: "Hz",
       },
     };
   }

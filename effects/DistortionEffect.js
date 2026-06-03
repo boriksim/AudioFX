@@ -196,17 +196,27 @@ export class DistortionEffect extends BaseEffect {
 
   getConfigSchema() {
     return {
+      mix: {
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: this.mix,
+        label: "Mix",
+      },
       strength: {
         type: "range",
         min: 0,
         max: 10,
         step: 0.1,
         value: this.strength,
+        label: "Strength",
       },
       type: {
         type: "select",
         options: ["soft", "hard", "tanh", "exponential", "foldback", "bitcrusher", "symmetric", "diode-like"],
         value: this.type,
+        label: "Curve",
       },
     };
   }

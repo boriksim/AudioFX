@@ -9,6 +9,12 @@
 // HTML template path is read from `manifest.assets.html`. Without a
 // registry the manager falls back to the legacy "id is the class name
 // and the file basename" behavior.
+//
+// As of Phase 2b, the manager can also render effect UI from the
+// effect's own `getConfigSchema()` instead of an HTML template. Pass
+// `useSchemaUI: true` to the constructor to switch the whole chain to
+// schema-driven rendering. This coexists with the HTML path; effects
+// without a schema simply render an empty body.
 
 export class EffectChainManager {
   /**
@@ -17,13 +23,21 @@ export class EffectChainManager {
    *   that holds effect UI cards.
    * @param {object} [registry] - optional PluginRegistry. When provided,
    *   `addEffect(id)` resolves effects through the registry by manifest id.
+   * @param {object} [options]
+   * @param {boolean} [options.useSchemaUI=false] - render effect UI from
+   *   `getConfigSchema()` instead of fetching an HTML template.
+   * @param {(domElement: HTMLElement, effect: object) => void} [options.uiRenderer]
+   *   - custom renderer when `useSchemaUI` is true. Defaults to
+   *   `renderSchemaForm` from `ui/SchemaForm.js`.
    */
-  constructor(audioContext, containerSelector = '#effects-container', registry = null) {
+  constructor(audioContext, containerSelector = '#effects-container', registry = null, options = {}) {
     this.audioContext = audioContext;
     this.container = document.querySelector(containerSelector);
     this.effectChain = [];
     this.idCounter = 1;
     this.registry = registry;
+    this.useSchemaUI = options.useSchemaUI === true;
+    this.uiRenderer = options.uiRenderer ?? null;
   }
 
   /**
@@ -52,9 +66,6 @@ export class EffectChainManager {
       displayName = manifest.name ?? effectId;
       htmlPath = manifest.assets?.html;
       manifestId = manifest.id;
-      if (!htmlPath) {
-        throw new Error(`Effect '${effectId}' manifest is missing assets.html`);
-      }
     } else {
       // Legacy: effectId is also the class name and the file basename.
       EffectClass = (await import(`../effects/${effectId}.js`))[effectId];
@@ -62,14 +73,21 @@ export class EffectChainManager {
       displayName = effectId;
     }
 
-    const response = await fetch(`effects/${htmlPath}`);
-    const html = await response.text();
-
     const wrapper = document.createElement("div");
     wrapper.className = "effect-instance";
     const instanceId = `fx-${effectId.toLowerCase()}-${this.idCounter++}`;
     wrapper.dataset.effectId = instanceId;
-    wrapper.innerHTML = html;
+    wrapper.dataset.manifestId = manifestId ?? "";
+    wrapper.classList.add(`fx-${(manifestId ?? effectId).toLowerCase()}`);
+
+    if (!this.useSchemaUI) {
+      if (!htmlPath) {
+        throw new Error(`Effect '${effectId}' manifest is missing assets.html`);
+      }
+      const response = await fetch(`effects/${htmlPath}`);
+      const html = await response.text();
+      wrapper.innerHTML = html;
+    }
 
     if (index >= this.container.children.length) {
       this.container.appendChild(wrapper);
@@ -78,6 +96,11 @@ export class EffectChainManager {
     }
 
     const effectInstance = new EffectClass(this.audioContext, wrapper);
+
+    if (this.useSchemaUI) {
+      const renderer = this.uiRenderer ?? (await loadDefaultRenderer());
+      renderer(wrapper, effectInstance);
+    }
 
     const effectObj = {
       id: instanceId,
@@ -202,4 +225,18 @@ export class EffectChainManager {
     const outputLatency = this.audioContext?.outputLatency ?? 0;
     return { baseLatency, outputLatency, total: baseLatency + outputLatency };
   }
+}
+
+/**
+ * Lazy-load the default schema UI renderer. The `ui/` layer is
+ * optional — managers that don't enable `useSchemaUI` never trigger
+ * this import, so the manager stays decoupled from the UI layer.
+ */
+let cachedDefaultRenderer = null;
+async function loadDefaultRenderer() {
+  if (cachedDefaultRenderer) return cachedDefaultRenderer;
+  const mod = await import("../ui/SchemaForm.js");
+  cachedDefaultRenderer = (domElement, effect) =>
+    mod.renderSchemaForm(domElement, effect);
+  return cachedDefaultRenderer;
 }

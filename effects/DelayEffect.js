@@ -149,12 +149,22 @@ export class DelayEffect extends BaseEffect {
 
   getConfigSchema() {
     return {
+      mix: {
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: this.mix,
+        label: "Mix",
+      },
       delayTime: {
         type: "range",
         min: 0.016,
         max: 2.5,
         step: 0.01,
         value: this.delayNode.delayTime.value,
+        label: "Time",
+        unit: "s",
       },
       feedback: {
         type: "range",
@@ -162,6 +172,7 @@ export class DelayEffect extends BaseEffect {
         max: 1,
         step: 0.01,
         value: this.feedbackGain.gain.value,
+        label: "Feedback",
       },
     };
   }

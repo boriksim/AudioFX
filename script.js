@@ -8,7 +8,7 @@ import { AnalyserBus } from "./engine/AnalyserBus.js";
 import { SpectrumBars } from "./visualization/renderers/SpectrumBars.js";
 import { Waveform } from "./visualization/renderers/Waveform.js";
 import { PresetManagerUI } from "./ui/PresetManager.js";
-import { PedalboardUI } from "./ui/PedalboardUI.js";
+import { PatchboardUI } from "./ui/PatchboardUI.js";
 import { HistoryController } from "./persistence/history.js";
 import { serializeProject, deserializeProject } from "./persistence/project.js";
 import { DistortionCurve } from "./visualization/perEffect/DistortionCurve.js";
@@ -222,7 +222,7 @@ async function initAudio() {
   }
 
   // Wrap onChange so wireNewMics runs after every mutation AND after
-  // history restores. PedalboardUI also wraps onChange (later in this
+  // history restores. PatchboardUI also wraps onChange (later in this
   // file) — this wrapper is the "outer" one in the chain so it runs
   // first.
   const _onChange = ecm.onChange;
@@ -241,7 +241,7 @@ async function initAudio() {
 
   setupVisualizer(audioContext, ecm);
 
-  const pedalboard = new PedalboardUI(ecm, {
+  const patchboard = new PatchboardUI(ecm, {
     resolveSourceActions: (card) => {
       const effectObj = ecm.effectChain.find((e) => e.dom === card);
       if (!effectObj) return null;

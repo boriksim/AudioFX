@@ -15,7 +15,7 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 199 passing across 20 test files.
+- **Last known good test count:** 219 passing across 21 test files.
   (Updated at the top of every commit.)
 
 ---
@@ -61,29 +61,34 @@ then resume the next-steps section below.**
 - **Hotfix — phase-3 post-feedback:** grip-only drag, bus re-attach
   on chain rebuild, mic re-attach on add, per-effect level meter for
   mic, `docs/STATUS.md` created.
+- **Phase 4a — Graph model:** `EffectChainManager` rewritten with
+  `connections[]` array, `connect()`/`disconnect()` methods,
+  `rebuildAudioGraph()` (chain-order + explicit, deduped, multi-input
+  summing via per-port GainNode, sinks → destination), port-aware
+  `getInputNode(portId)`/`getOutputNode(portId)` in
+  `AbstractAudioNode`. Project format bumped to v2 with v1→v2
+  migration (default vertical-column positions, default ports).
+  Chain-order connections are derived; only explicit connections are
+  serialized.
+- **Phase 4b — Patchboard UI:** `ui/PatchboardUI.js` replaces
+  `ui/PedalboardUI.js` (deleted). Free-grid card layout via
+  `transform: translate(x, y)`, SVG `<path>` wires between port
+  dots, drag-to-wire from output to input port, click wire to
+  disconnect, `Delete`/`Backspace` to remove selected card. Per-card
+  data: `e.position = {x, y}` (persisted). Manager API: `addEffect(id,
+  {position})`. PatchboardUI wraps `ecm.onChange` (save-and-restore
+  on destroy) so it never overwrites upstream hooks.
 
 ---
 
 ## Open / upcoming work
 
-### Phase 4a — Graph model
-Replace the linear `effectChain` with a true graph (`nodes[]` +
-`connections[]`) supporting any-to-any wiring, multi-input summing
-via per-port GainNode, port validation, and graph-level
-serialization. `EffectChainManager` becomes a thin compat layer
-that constructs the equivalent linear graph. Project format
-upgrades to v2 with a v1→v2 migration.
-
-### Phase 4b — Patchboard UI
-Replace `PedalboardUI` with a free-grid `PatchboardUI`: SVG
-`<path>` wires between port dots, cards positioned by absolute
-`transform: translate(x, y)`, drag-to-wire interactions, port
-hit-testing.
-
 ### Phase 4c — Multi-port effects
 Add a `ChannelSplitter` effect that declares `manifest.outputs =
 [{id: "L"}, {id: "R"}]` so two parallel chains can be patched
-from a single source.
+from a single source. Verify the existing `PatchboardUI` correctly
+renders a card with two output ports and the wire layer lays out
+cleanly.
 
 ### Phase 5 — Profiling & docs
 `engine/Profiler.js` (per-node CPU time, render quantum histogram,
@@ -125,6 +130,26 @@ drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
   to destination). The destination connection is the manager's
   responsibility. The analyser reads from its source via
   `getByteFrequencyData` / `getFloatTimeDomainData`.
+- **Graph model (Phase 4a):** `EffectChainManager.connections[]`
+  holds ONLY explicit connections. Chain-order connections are
+  derived from the `effectChain` array order and deduped against
+  the explicit list at `rebuildAudioGraph()` time. Multi-input
+  summing inserts a fresh per-port `GainNode` summer when a port
+  has >1 source. Sinks (no outgoing connection) connect to
+  `audioContext.destination`.
+- **Project format v2:** `formatVersion: 2`, `schema: 2`. Nodes
+  carry optional `position: {x, y}`. Connections carry optional
+  `fromPort`/`toPort` (default `"out"`/`"in"`). `serializeProject`
+  only stores EXPLICIT connections (chain-order is reconstructed
+  on load). `migrateProject(doc)` runs `v1_to_v2` on legacy docs.
+- **Patchboard UI is the only UI (Phase 4b):** `PedalboardUI` is
+  deleted. `PatchboardUI` is the canonical renderer. It wraps
+  `ecm.onChange` (save-and-restore on `destroy()`) the same way
+  the old `PedalboardUI` did. Sources (`input-mic`, `input-file`,
+  `input-oscillator`) render no input port; effects render an
+  input port on the left and an output port on the right.
+  Drag-to-wire creates explicit connections; clicking a wire
+  disconnects it. `Delete`/`Backspace` removes the selected card.
 
 ---
 
@@ -157,7 +182,7 @@ drop-out counter). `docs/PERFORMANCE.md` (latency/throughput notes).
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 199/199 baseline.
+6. `npx vitest run` — confirm 219/219 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.

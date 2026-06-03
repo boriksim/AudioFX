@@ -17,8 +17,7 @@ export class DistortionEffect extends AbstractEffectNode {
     this.postGain.connect(this.effectOutput);
 
     this.setMix(1.0);
-    this.bypass = true;
-    this.setBypassed(this.bypass);
+    this.setBypassed(true);
   }
 
   initUI() {
@@ -29,26 +28,34 @@ export class DistortionEffect extends AbstractEffectNode {
     this.mixValue = this.domElement.querySelector('[data-fx-mix-value]');
     this.bypassCheckbox = this.domElement.querySelector('[data-fx-bypass]');
 
-    this.distortionStrengthSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      this.setParam('distortionStrength', value);
-      if (this.distortionStrengthValue) this.distortionStrengthValue.textContent = value;
-    });
+    if (this.distortionStrengthSlider) {
+      this.distortionStrengthSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        this.setParam('distortionStrength', value);
+        if (this.distortionStrengthValue) this.distortionStrengthValue.textContent = value;
+      });
+    }
 
-    this.distortionTypeSelector.addEventListener('input', (e) => {
-      const value = e.target.value;
-      this.setParam('distortionType', value);
-    });
+    if (this.distortionTypeSelector) {
+      this.distortionTypeSelector.addEventListener('input', (e) => {
+        const value = e.target.value;
+        this.setParam('distortionType', value);
+      });
+    }
 
-    this.mixSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      this.setParam('mix', value);
-      if (this.mixValue) this.mixValue.textContent = value;
-    });
+    if (this.mixSlider) {
+      this.mixSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        this.setParam('mix', value);
+        if (this.mixValue) this.mixValue.textContent = value;
+      });
+    }
 
-    this.bypassCheckbox.addEventListener('click', () => {
-      this.setParam('bypass', this.bypassCheckbox.checked);
-    });
+    if (this.bypassCheckbox) {
+      this.bypassCheckbox.addEventListener('click', () => {
+        this.setParam('bypass', this.bypassCheckbox.checked);
+      });
+    }
   }
 
   setStrength(value) {

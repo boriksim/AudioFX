@@ -1,4 +1,11 @@
-/.idea
-/.vscode
+node_modules/
+coverage/
+.DS_Store
+*.log
+dist/
+.idea/
+.vscode/
+
+# local audio test files
 Muse - Knights of cydonia.mp3
 Ghost Spillways.mp3

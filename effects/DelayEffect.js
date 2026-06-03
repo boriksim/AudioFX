@@ -20,8 +20,7 @@ export class DelayEffect extends AbstractEffectNode {
     this.delayNode.connect(this.effectOutput);
 
     this.setMix(0.5);
-    this.bypass = true;
-    this.setBypassed(this.bypass);
+    this.setBypassed(true);
   }
 
   initUI() {
@@ -33,27 +32,35 @@ export class DelayEffect extends AbstractEffectNode {
     this.mixValue = this.domElement.querySelector('[data-fx-mix-value]');
     this.bypassCheckbox = this.domElement.querySelector('[data-fx-bypass]');
 
-    this.delayTimeSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      this.setParam('delayTime', value);
-      if (this.delayTimeValue) this.delayTimeValue.textContent = value;
-    });
+    if (this.delayTimeSlider) {
+      this.delayTimeSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        this.setParam('delayTime', value);
+        if (this.delayTimeValue) this.delayTimeValue.textContent = value;
+      });
+    }
 
-    this.delayFeedbackSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      this.setParam('delayFeedback', value);
-      if (this.delayFeedbackValue) this.delayFeedbackValue.textContent = value;
-    });
+    if (this.delayFeedbackSlider) {
+      this.delayFeedbackSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        this.setParam('delayFeedback', value);
+        if (this.delayFeedbackValue) this.delayFeedbackValue.textContent = value;
+      });
+    }
 
-    this.mixSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      this.setParam('mix', value);
-      if (this.mixValue) this.mixValue.textContent = value;
-    });
+    if (this.mixSlider) {
+      this.mixSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        this.setParam('mix', value);
+        if (this.mixValue) this.mixValue.textContent = value;
+      });
+    }
 
-    this.bypassCheckbox.addEventListener('click', () => {
-      this.setParam('bypass', this.bypassCheckbox.checked);
-    });
+    if (this.bypassCheckbox) {
+      this.bypassCheckbox.addEventListener('click', () => {
+        this.setParam('bypass', this.bypassCheckbox.checked);
+      });
+    }
   }
 
   setParam(paramName, value) {
@@ -92,10 +99,8 @@ export class DelayEffect extends AbstractEffectNode {
     }
   }
 
-  // Delay specific bypass
   setBypassed(bypassed) {
     super.setBypassed(bypassed);
-    this.bypass = bypassed;
 
     if (bypassed) {
       try {

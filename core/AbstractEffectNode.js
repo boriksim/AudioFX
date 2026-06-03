@@ -1,12 +1,18 @@
 import AbstractAudioNode from "./AbstractAudioNode.js"
 
+/**
+ * Base class for all effects. Provides dry/wet mix routing and a bypass
+ * flag that mutes the wet path while keeping the dry path at unity.
+ *
+ * Subclasses connect their own DSP between `this.input` and
+ * `this.effectOutput`. The base wires both paths into `this.output`.
+ */
 export default class AbstractEffectNode extends AbstractAudioNode {
   constructor(audioContext, domElement) {
     super(audioContext);
 
     this.domElement = domElement;
 
-    // Общие input/output
     this.input = this.audioContext.createGain();
     this.output = this.audioContext.createGain();
 
@@ -21,15 +27,17 @@ export default class AbstractEffectNode extends AbstractAudioNode {
     this.effectOutput.connect(this.wetGain);
     this.wetGain.connect(this.output);
 
-    this.bypassed = true;
+    this.bypass = true;
+    this.dryGain.gain.value = 1.0;
+    this.wetGain.gain.value = 0.0;
 
     this.initUI();
   }
 
   initUI() {}
-  
+
   setBypassed(bypassed) {
-    this.bypassed = bypassed;
+    this.bypass = bypassed;
     if (bypassed) {
       this.dryGain.gain.value = 1.0;
       this.wetGain.gain.value = 0.0;

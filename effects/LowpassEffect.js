@@ -13,8 +13,7 @@ export class LowpassEffect extends AbstractEffectNode {
     this.lowpassNode.connect(this.effectOutput);
 
     this.setMix(1.0);
-    this.bypass = false;
-    this.setBypassed(this.bypass);
+    this.setBypassed(false);
   }
 
   initUI() {
@@ -24,21 +23,27 @@ export class LowpassEffect extends AbstractEffectNode {
     this.mixValue = this.domElement.querySelector('[data-fx-mix-value]');
     this.bypassCheckbox = this.domElement.querySelector('[data-fx-bypass]');
 
-    this.lowpassFreqSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      this.setParam('lowpassFreq', value);
-      if (this.lowpassFreqValue) this.lowpassFreqValue.textContent = value;
-    });
+    if (this.lowpassFreqSlider) {
+      this.lowpassFreqSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        this.setParam('lowpassFreq', value);
+        if (this.lowpassFreqValue) this.lowpassFreqValue.textContent = value;
+      });
+    }
 
-    this.mixSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      this.setParam('mix', value);
-      if (this.mixValue) this.mixValue.textContent = value;
-    });
+    if (this.mixSlider) {
+      this.mixSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        this.setParam('mix', value);
+        if (this.mixValue) this.mixValue.textContent = value;
+      });
+    }
 
-    this.bypassCheckbox.addEventListener('click', () => {
-      this.setParam('bypass', this.bypassCheckbox.checked);
-    });
+    if (this.bypassCheckbox) {
+      this.bypassCheckbox.addEventListener('click', () => {
+        this.setParam('bypass', this.bypassCheckbox.checked);
+      });
+    }
   }
 
   setParam(paramName, value) {
@@ -60,25 +65,30 @@ export class LowpassEffect extends AbstractEffectNode {
 
   getParam(paramName) {
     switch (paramName) {
-      case 'lowpassFreq': return this.delayNode.delayTime.value;
+      case 'lowpassFreq': return this.lowpassNode.frequency.value;
       case 'mix': return this.mix;
       case 'bypass': return this.bypass;
       default: return undefined;
     }
   }
 
+  setFrequency(hz) {
+    hz = Math.max(100, Math.min(16000, hz));
+    this.lowpassNode.frequency.value = hz;
+  }
+
   destroy() {
     if (this.lowpassFreqSlider) {
       this.lowpassFreqSlider.replaceWith(this.lowpassFreqSlider.cloneNode(true));
     }
-    if (this.mixSlider){
+    if (this.mixSlider) {
       this.mixSlider.replaceWith(this.mixSlider.cloneNode(true));
     }
     if (this.bypassCheckbox) {
       this.bypassCheckbox.replaceWith(this.bypassCheckbox.cloneNode(true));
     }
     if (this.lowpassNode) {
-      this.delayNode.disconnect();
+      this.lowpassNode.disconnect();
     }
   }
 
@@ -95,7 +105,7 @@ export class LowpassEffect extends AbstractEffectNode {
   }
 
   updateConfig({ lowpassFrequency, mix }) {
-    super.updateConfig({ mix })
+    super.updateConfig({ mix });
     if (typeof lowpassFrequency === "number") this.setFrequency(lowpassFrequency);
   }
 }

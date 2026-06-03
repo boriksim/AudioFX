@@ -1,76 +1,86 @@
-// EffectChainManager.js: менеджер для управления цепочкой аудиоэффектов
-// Позволяет добавлять, удалять, перемещать эффекты и пересобирать аудио-цепочку
+// EffectChainManager: manages a linear chain of audio effects.
+// Supports adding, removing, moving, and rebuilding the audio chain.
+// Each effect ships its own HTML template and JS module; the manager
+// orchestrates loading, DOM mounting, and graph wiring.
 
 export class EffectChainManager {
-  // Конструктор принимает аудиоконтекст и селектор контейнера для эффектов
+  /**
+   * @param {AudioContext} audioContext
+   * @param {string} containerSelector - CSS selector for the DOM container
+   *   that holds effect UI cards.
+   */
   constructor(audioContext, containerSelector = '#effects-container') {
-    this.audioContext = audioContext; // Сохраняем аудиоконтекст
-    this.container = document.querySelector(containerSelector); // Контейнер для DOM-элементов эффектов
-    this.effectChain = []; // Массив для хранения всех эффектов в цепочке
-    this.idCounter = 1; // Счётчик для уникальных id
+    this.audioContext = audioContext;
+    this.container = document.querySelector(containerSelector);
+    this.effectChain = [];
+    this.idCounter = 1;
   }
 
-  // Метод для добавления нового эффекта
+  /**
+   * Add a new effect to the chain.
+   * @param {string} effectName - Effect class name; must match
+   *   `effects/${effectName}.html` and `effects/${effectName}.js`.
+   * @param {number} [index] - Insertion position; defaults to end of chain.
+   * @returns {Promise<{id, name, dom, audioNode}>}
+   */
   async addEffect(effectName, index = this.effectChain.length) {
-    // 1. Загружаем HTML-файл эффекта через fetch
     const response = await fetch(`effects/${effectName}.html`);
     const html = await response.text();
 
-    // 2. Создаём DOM-обёртку для эффекта
     const wrapper = document.createElement('div');
     wrapper.className = 'effect-instance';
     const effectId = `fx-${effectName.toLowerCase()}-${this.idCounter++}`;
     wrapper.dataset.effectId = effectId;
     wrapper.innerHTML = html;
 
-    // 3. Вставляем DOM-элемент в контейнер по нужному индексу
     if (index >= this.container.children.length) {
       this.container.appendChild(wrapper);
     } else {
       this.container.insertBefore(wrapper, this.container.children[index]);
     }
 
-    // 4. Динамически импортируем JS-класс эффекта
     const module = await import(`../effects/${effectName}.js`);
     const EffectClass = module[effectName];
 
-    // 5. Создаём экземпляр эффекта, передаём аудиоконтекст и DOM-элемент
     const effectInstance = new EffectClass(this.audioContext, wrapper);
 
-    // 6. Добавляем объект эффекта в массив цепочки
     const effectObj = {
       id: effectId,
       name: effectName,
       dom: wrapper,
-      audioNode: effectInstance
+      audioNode: effectInstance,
     };
     this.effectChain.splice(index, 0, effectObj);
-    this.rebuildAudioChain(); // Пересобираем аудио-цепочку
-    return effectObj; // Возвращаем объект эффекта
+    this.rebuildAudioChain();
+    return effectObj;
   }
 
-  // Метод для удаления эффекта
+  /**
+   * Remove an effect by id or object reference.
+   * @param {string|object} effectObjOrId
+   */
   removeEffect(effectObjOrId) {
-    // Находим индекс эффекта по объекту или id
     const idx = typeof effectObjOrId === 'string'
       ? this.effectChain.findIndex(e => e.id === effectObjOrId)
       : this.effectChain.indexOf(effectObjOrId);
     if (idx === -1) return;
     const effectObj = this.effectChain[idx];
-    // Вызываем destroy у эффекта, если реализовано
+
     if (effectObj.audioNode && typeof effectObj.audioNode.destroy === 'function') {
       effectObj.audioNode.destroy();
     }
-    // Удаляем DOM-элемент
     if (effectObj.dom && effectObj.dom.parentNode) {
       effectObj.dom.parentNode.removeChild(effectObj.dom);
     }
-    // Удаляем из массива
     this.effectChain.splice(idx, 1);
-    this.rebuildAudioChain(); // Пересобираем цепочку
+    this.rebuildAudioChain();
   }
 
-  // Метод для перемещения эффекта в цепочке
+  /**
+   * Move an existing effect to a new position in the chain.
+   * @param {string|object} effectObjOrId
+   * @param {number} newIndex
+   */
   moveEffect(effectObjOrId, newIndex) {
     const idx = typeof effectObjOrId === 'string'
       ? this.effectChain.findIndex(e => e.id === effectObjOrId)
@@ -78,25 +88,26 @@ export class EffectChainManager {
     if (idx === -1 || newIndex < 0 || newIndex >= this.effectChain.length) return;
     const [effectObj] = this.effectChain.splice(idx, 1);
     this.effectChain.splice(newIndex, 0, effectObj);
-    // Перемещаем DOM-элемент
-    if (newIndex >= this.container.children.length) {
-      this.container.appendChild(effectObj.dom);
-    } else {
-      this.container.insertBefore(effectObj.dom, this.container.children[newIndex]);
+
+    // Re-append DOM in chain order. appendChild on an already-attached node
+    // moves it, so this is both correct and idempotent.
+    for (const e of this.effectChain) {
+      this.container.appendChild(e.dom);
     }
     this.rebuildAudioChain();
   }
 
-  // Метод для пересборки аудио-цепочки
+  /**
+   * Disconnect every effect and rewire them head-to-tail in chain order.
+   * The last effect's output is connected to `audioContext.destination`.
+   */
   rebuildAudioChain() {
-    // Отключаем все эффекты
     for (const effect of this.effectChain) {
       if (effect.audioNode && typeof effect.audioNode.disconnect === 'function') {
         effect.audioNode.disconnect();
       }
     }
 
-    // Соединяем эффекты друг с другом
     for (let i = 0; i < this.effectChain.length - 1; i++) {
       const currentEffect = this.effectChain[i];
       const nextEffect = this.effectChain[i + 1];
@@ -112,21 +123,26 @@ export class EffectChainManager {
         lastEffect.audioNode.connect(this.audioContext.destination);
       }
     }
-
-    console.log("Audio chain rebult: ", this.effectChain.map(e => e.name));
   }
 
-  // Получить эффект по id
+  /**
+   * @param {string} id
+   * @returns {object|undefined}
+   */
   getEffectById(id) {
     return this.effectChain.find(e => e.id === id);
   }
 
-  // Получить копию массива всех эффектов
+  /**
+   * @returns {object[]} a shallow copy of the effect chain
+   */
   getEffects() {
     return this.effectChain.slice();
   }
 
-  // Удалить все эффекты из цепочки
+  /**
+   * Remove every effect from the chain.
+   */
   clear() {
     while (this.effectChain.length > 0) {
       this.removeEffect(this.effectChain[0]);

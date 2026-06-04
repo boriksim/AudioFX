@@ -15,10 +15,12 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 314 passing across 24 test files.
+- **Last known good test count:** 322 passing across 24 test files.
   (Updated at the top of every commit.)
-- **Latest commit on `dev`:** `b3103be` — `fix(patchboard):
-  explicit-only patch-cable model; no auto-wiring`. Prior:
+- **Latest commit on `dev`:** `b61fa26` — `feat(patchboard):
+  multi-master output, live wire highlight, cache-bust`. Prior:
+  `f57af1d` `docs(status)`, `b3103be` `fix(patchboard):
+  explicit-only patch-cable model; no auto-wiring`,
   `a84b843` `fix(patchboard): master port visible on container
   right edge`, `e56688b` `docs(status)`, `b3d5556` `feat(patchboard):
   master output port, utility node, drag-on-wire-to-insert, larger
@@ -129,7 +131,7 @@ proposed by the user.)
 
 ---
 
-## Post-Phase-5 patchboard features (commits `b3d5556`, `a84b843`, `b3103be`)
+## Post-Phase-5 patchboard features (commits `b3d5556`, `a84b843`, `b3103be`, `b61fa26`)
 
 The 11-section plan is complete; the user asked for these
 ergonomic improvements on top of the patchboard:
@@ -217,18 +219,53 @@ ergonomic improvements on top of the patchboard:
   new.
 - **No auto-wiring means no sound until the user wires to
   master.** With `useMasterOutput: true` (the patchboard's
-  default), only the effect whose id matches `masterOutputId`
-  reaches `audioContext.destination`. No master wire = silence.
-  This is intentional in the patch-cable model: a new effect
-  is silent until the user wires it. The visualizer still
-  moves because the analyser is attached to a different point
-  in the graph than destination.
-- **Test count:** 314 passing across 24 files (was 306).
+  default), the effects whose ids are in `masterOutputIds`
+  are summed into `audioContext.destination` (via a per-rebuild
+  GainNode summer). No master wire = silence. This is
+  intentional in the patch-cable model: a new effect is silent
+  until the user wires it. The visualizer still moves because
+  the analyser is attached to a different point in the graph
+  than destination.
+- **Multiple master outputs are supported.** The manager's
+  `masterOutputId` (single id) is replaced by `masterOutputIds`
+  (a `Set<string>`). Multiple effects can be masters; they are
+  all summed into destination via the same per-rebuild summer
+  (so multi-master patches don't create parallel paths that
+  don't sum). New API:
+  `setMasterOutput(id)` / `unsetMasterOutput(id)` /
+  `clearMasterOutput()` / `getMasterOutput()` (returns a Set
+  COPY) / `isMasterOutput(id)`. The PatchboardUI draws one
+  orange master wire per master effect; clicking a wire's hit
+  area removes only THAT effect from the set (so a multi-master
+  patch can have just one wire removed without dropping the
+  others). Persistence: `serializeProject` writes
+  `masterOutputIds: string[]`; `deserializeProject` re-applies
+  them after the explicit connections.
+- **Live wire highlight during card drag.** As the user drags
+  a card over the patchboard, the wire under the pointer (if
+  any, within 30px) is highlighted with a bright white + glow
+  effect. This gives the user visual feedback that they're
+  about to drop on a specific wire. The highlight is
+  added/removed by toggling a CSS class (`pb-wire-hit-target`)
+  on the wire's hit area — no SVG re-rendering per mousemove.
+  New method: `_highlightWireForInsert(connection)`.
+- **Cache-busting headers in `index.html`.** ESM modules in
+  the browser are cached aggressively. The user was seeing
+  the OLD pan range (0..1, where 0.5 is center) after the
+  fix to -1..1 (where 0 is center) because the browser
+  served the cached old code. Added `Cache-Control: no-store,
+  no-cache, must-revalidate` + `Pragma: no-cache` +
+  `Expires: 0` to the HTML head. The user needs a hard
+  refresh once (Ctrl+Shift+R / Cmd+Shift+R) to pick up the
+  new code; after that, the headers keep things fresh.
+- **Test count:** 322 passing across 24 files (was 314).
   8 new tests cover the patch-cable model (no auto-wire,
   useChainOrder disabled, explicit connect() draws a wire,
   master wire, master reaches destination, no master = no
   destination, splice creates 2 new explicit connections,
-  RangeWidget with negative min).
+  RangeWidget with negative min). Plus multi-master (3
+  tests), wire highlight (2 tests), and the updated master
+  tests for the Set model (5 tests).
 
 ---
 

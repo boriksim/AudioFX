@@ -2,6 +2,17 @@
 // We don't run real audio in tests; we just need the graph-construction calls
 // to succeed and nodes to be inspectable. Methods are no-ops unless overridden.
 
+// jsdom doesn't implement elementsFromPoint by default. PatchboardUI
+// uses it as the fast path for drag-to-wire drop targeting; without
+// the polyfill the production code path would throw, and the test
+// would never reach the tolerance-based fallback. Returning [] is
+// the documented contract (when there's no element at the point)
+// and exercises the same code path the browser takes when the
+// pointer is outside the patchboard.
+if (typeof document.elementsFromPoint !== "function") {
+  document.elementsFromPoint = () => [];
+}
+
 class MockAudioParam {
   constructor(initial = 0) {
     this.value = initial;

@@ -88,7 +88,7 @@ export class PatchboardUI {
     header.className = "pb-header";
     header.innerHTML = `
       <span class="pb-title">Patchboard</span>
-      <span class="pb-hint">drag a card to move · drag a port to wire · click a wire to disconnect</span>
+      <span class="pb-hint">drag a card to move · drag a port to wire · click any wire to disconnect</span>
     `;
     this.container.appendChild(header);
   }
@@ -440,17 +440,43 @@ export class PatchboardUI {
   }
 
   /**
-   * Find the input port element under the pointer (or null).
+   * Find the input port element under the pointer (or null). A
+   * small tolerance (~10px) is applied: ports are 14x14 dots on
+   * the edges of cards, and the user shouldn't have to aim
+   * pixel-perfectly at a 14px target while a wire is dangling
+   * from their cursor. The tolerance also helps when the ghost
+   * wire visually overlaps the port and the browser hands
+   * `elementsFromPoint` a hit on the SVG layer instead of the
+   * port.
    * @returns {HTMLElement|null}
    */
   _portAt(clientX, clientY, role) {
+    // First try an exact hit.
     const els = document.elementsFromPoint(clientX, clientY);
     for (const el of els) {
       if (el.classList?.contains("pb-port") && el.dataset.portRole === role) {
         return el;
       }
     }
-    return null;
+    // Fallback: scan every port of the requested role and find
+    // the closest one within 10px of the pointer. This makes
+    // drop targeting forgiving without needing a "snap to port"
+    // animation.
+    let best = null;
+    let bestDist = 10;
+    for (const port of this.container.querySelectorAll(`.pb-port-${role}`)) {
+      const r = port.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dx = cx - clientX;
+      const dy = cy - clientY;
+      const d = Math.hypot(dx, dy);
+      if (d < bestDist) {
+        best = port;
+        bestDist = d;
+      }
+    }
+    return best;
   }
 
   _highlightTargets(fromId, _fromPort, clientX, clientY) {
@@ -528,30 +554,60 @@ export class PatchboardUI {
       if (!fromEl || !toEl) continue;
       const a = this._portCenter(fromEl);
       const b = this._portCenter(toEl);
+      const d = this._wirePath(a, b);
+
+      // Visible wire (thin, 2px). pointer-events: none so the
+      // hit-area path below receives the click.
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("class", "pb-wire");
       path.setAttribute("fill", "none");
       path.setAttribute("stroke", "#6cf");
       path.setAttribute("stroke-width", "2");
       path.setAttribute("marker-end", "url(#pb-arrow)");
-      path.setAttribute("d", this._wirePath(a, b));
-      // Click on a wire disconnects it (only for explicit connections).
+      path.setAttribute("d", d);
+      this._svg.appendChild(path);
+
+      // Wider invisible hit area on top. Users can click anywhere
+      // within ~8px of the visible wire to disconnect, not just
+      // exactly on the 2px stroke.
       const isExplicit = this.ecm.connections.some(
         (x) => x.from === c.from && x.to === c.to && x.fromPort === c.fromPort && x.toPort === c.toPort
       );
-      if (isExplicit) {
-        path.style.pointerEvents = "stroke";
-        path.style.cursor = "pointer";
-        path.addEventListener("click", (ev) => {
-          ev.stopPropagation();
+      const hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      hit.setAttribute("class", "pb-wire-hit");
+      hit.setAttribute("d", d);
+      hit.setAttribute("stroke-width", "16");
+      hit.setAttribute("stroke", "transparent");
+      hit.setAttribute("fill", "none");
+      hit.setAttribute("pointer-events", "stroke");
+      // Stash the connection on the element itself so tests and
+      // future code can identify which wire a hit area belongs
+      // to without having to re-parse the SVG path geometry.
+      hit._connection = c;
+      hit._isExplicit = isExplicit;
+      hit.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (isExplicit) {
           try {
             this.ecm.disconnect(c.from, c.to, { fromPort: c.fromPort, toPort: c.toPort });
           } catch (err) {
             console.error("disconnect failed:", err);
           }
-        });
-      }
-      this._svg.appendChild(path);
+        } else {
+          // Chain-order wire: clicking removes the destination
+          // effect from the chain. The chain re-routes around
+          // the gap automatically (the manager's rebuildAudioGraph
+          // re-computes chain order from the array). The user can
+          // re-add the effect via the picker, or undo with Ctrl+Z
+          // to restore the previous state (history is wired up
+          // via ecm.onChange).
+          const name = toNode.name ?? c.to;
+          if (confirm(`Disconnect '${name}' from the chain?`)) {
+            this.ecm.removeEffect(c.to);
+          }
+        }
+      });
+      this._svg.appendChild(hit);
     }
   }
 

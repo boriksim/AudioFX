@@ -369,7 +369,18 @@ canvas {
 }
 
 .pb-wire {
+    pointer-events: none;
+}
+
+.pb-wire-hit {
+    stroke: transparent;
+    stroke-width: 16;
+    fill: none;
     pointer-events: stroke;
+    cursor: pointer;
+}
+.pb-wire-hit:hover {
+    stroke: rgba(108, 204, 255, 0.18);
 }
 
 .pb-wire:hover {

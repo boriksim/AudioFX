@@ -153,24 +153,93 @@ describe("PatchboardUI", () => {
       const [mic, d1, d2, d3] = ecm.effectChain;
       // Explicit: mic -> d3 (in addition to chain order mic->d1->d2->d3).
       ecm.connect(mic.id, d3.id);
-      // Force a re-sync (connect() already fires onChange which the
-      // patchboard wraps, so wires are already redrawn).
+      // connect() fires onChange which the patchboard wraps, so
+      // wires are already redrawn.
       const wires = container.querySelectorAll(".pb-wire");
       // 3 chain-order + 1 explicit = 4 wires.
       expect(wires.length).toBe(4);
-      // The explicit wire has click->disconnect behavior. Find it.
-      let explicit = null;
-      for (const w of wires) {
-        if (w.style.pointerEvents === "stroke") {
-          explicit = w;
-          break;
-        }
-      }
-      expect(explicit).toBeTruthy();
-      explicit.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      // Find the explicit hit area by its stashed connection.
+      const hits = container.querySelectorAll(".pb-wire-hit");
+      expect(hits.length).toBe(4);
+      const explicitHit = [...hits].find(
+        (h) => h._isExplicit === true
+          && h._connection.from === mic.id
+          && h._connection.to === d3.id
+      );
+      expect(explicitHit).toBeTruthy();
+      explicitHit.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       // The explicit connection is gone; 3 wires remain.
       expect(container.querySelectorAll(".pb-wire").length).toBe(3);
+      expect(ecm.connections.length).toBe(0);
     })();
+  });
+
+  it("renders a wide invisible hit area for every wire (click target)", () => {
+    // Initial chain has 1 wire (mic -> delay). Both the visible
+    // wire AND the hit area are rendered.
+    const wires = container.querySelectorAll(".pb-wire");
+    const hits = container.querySelectorAll(".pb-wire-hit");
+    expect(wires.length).toBe(1);
+    expect(hits.length).toBe(1);
+    // The hit area has stroke-width 16 set as an SVG attribute
+    // (so it's the source of truth, not just CSS) and
+    // pointer-events: stroke (so clicks land on the wide
+    // invisible stroke, not the 2px visible one).
+    const hit = hits[0];
+    expect(hit.getAttribute("stroke-width")).toBe("16");
+    expect(hit.getAttribute("pointer-events")).toBe("stroke");
+  });
+
+  it("chain-order wire click removes the destination from the chain (when confirmed)", async () => {
+    // 2-effect chain: mic -> delay. 1 chain-order wire.
+    await ecm.addEffect("delay");
+    // Chain is now mic, d1, d2 with 2 chain-order wires.
+    const d2 = ecm.effectChain[2];
+    const hits = container.querySelectorAll(".pb-wire-hit");
+    expect(hits.length).toBe(2);
+    // Find the hit area that points to d2 (the last one).
+    const hitToD2 = [...hits].find((h) => h._connection.to === d2.id);
+    expect(hitToD2).toBeTruthy();
+    expect(hitToD2._isExplicit).toBe(false);
+    // Mock confirm() to accept the disconnect.
+    globalThis.confirm = () => true;
+    hitToD2.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    // d2 is removed; chain is back to mic, d1.
+    expect(ecm.effectChain.length).toBe(2);
+    expect(ecm.effectChain.some((e) => e.id === d2.id)).toBe(false);
+  });
+
+  it("chain-order wire click is a no-op when confirm is cancelled", async () => {
+    await ecm.addEffect("delay");
+    const d2 = ecm.effectChain[2];
+    const hits = container.querySelectorAll(".pb-wire-hit");
+    const hitToD2 = [...hits].find((h) => h._connection.to === d2.id);
+    expect(hitToD2).toBeTruthy();
+    // Mock confirm() to reject the disconnect.
+    globalThis.confirm = () => false;
+    hitToD2.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    // d2 is still there.
+    expect(ecm.effectChain.length).toBe(3);
+    expect(ecm.effectChain.some((e) => e.id === d2.id)).toBe(true);
+  });
+
+  it("_portAt tolerates up to 10px of pointer-port distance", () => {
+    // Install a card with a known port position via a fake rect.
+    const port = container.querySelector(".pb-port-in");
+    expect(port).toBeTruthy();
+    // jsdom returns all zeros for getBoundingClientRect, so the
+    // exact hit at (0,0) is the only thing that works in tests.
+    // The fallback tolerance path is exercised by stubbing the
+    // rect to a known position and querying a pointer nearby.
+    port.getBoundingClientRect = () => ({
+      left: 100, top: 100, right: 114, bottom: 114, width: 14, height: 14, x: 100, y: 100, toJSON() { return {}; },
+    });
+    // Pointer at (108, 108) — center of the port.
+    expect(ui._portAt(108, 108, "in")).toBe(port);
+    // Pointer at (115, 108) — 7px right of center, within tolerance.
+    expect(ui._portAt(115, 108, "in")).toBe(port);
+    // Pointer at (130, 108) — 22px right, outside tolerance.
+    expect(ui._portAt(130, 108, "in")).toBe(null);
   });
 
   it("installs the add-effect picker above the board", () => {

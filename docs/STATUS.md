@@ -15,14 +15,16 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 252 passing across 23 test files.
+- **Last known good test count:** 253 passing across 23 test files.
   (Updated at the top of every commit.)
-- **Latest commit on `dev`:** `33f7a9b` — `fix(init): build the chain and
-  patchboard even if mic permission is denied`. Prior:
-  `8074723` `fix(patchboard): hard-set container position…`,
-  `0caf4c8` `fix(patchboard): distinct default positions…`,
-  `61eaa57` `feat(phase-5)`, `c330e7c` `feat(phase-4c)`,
-  `c9de37b` `feat(phase-4b)`, `2cdc142` `feat(phase-4a)`.
+- **Latest commit on `dev`:** `420fe0f` — `fix(channel-splitter): use
+  named export to match script.js import` (root cause of the empty
+  patchboard). Prior: `48b668b` `docs(status)`, `33f7a9b`
+  `fix(init): mic-optional`, `8074723` `fix(patchboard): hard-set
+  container position`, `0caf4c8` `fix(patchboard): distinct
+  default positions`, `61eaa57` `feat(phase-5)`,
+  `c330e7c` `feat(phase-4c)`, `c9de37b` `feat(phase-4b)`,
+  `2cdc142` `feat(phase-4a)`.
 
 ---
 
@@ -236,7 +238,7 @@ proposed by the user.)
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 252/252 baseline.
+6. `npx vitest run` — confirm 253/253 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.

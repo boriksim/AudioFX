@@ -15,8 +15,14 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 251 passing across 23 test files.
+- **Last known good test count:** 252 passing across 23 test files.
   (Updated at the top of every commit.)
+- **Latest commit on `dev`:** `33f7a9b` — `fix(init): build the chain and
+  patchboard even if mic permission is denied`. Prior:
+  `8074723` `fix(patchboard): hard-set container position…`,
+  `0caf4c8` `fix(patchboard): distinct default positions…`,
+  `61eaa57` `feat(phase-5)`, `c330e7c` `feat(phase-4c)`,
+  `c9de37b` `feat(phase-4b)`, `2cdc142` `feat(phase-4a)`.
 
 ---
 
@@ -182,6 +188,22 @@ proposed by the user.)
   `subscribe(fn)` notifies on every event; exceptions are
   isolated. `AnalyserBus` accepts an `onFrame` option for the
   runtime to wire the Profiler into the rAF tick.
+- **Patchboard `position: relative` is unconditional.** The
+  container's position is set inline and via CSS
+  (`.effects-container.patchboard { position: relative }`); the
+  earlier `getComputedStyle(...) === "static"` check was
+  unreliable (jsdom returns `""`). Each card has explicit
+  `top: 0; left: 0` so `transform: translate(x, y)` is the
+  sole positioning signal. A `.pb-header` is appended to the
+  container so the workspace is labeled even if card rendering
+  fails. `script.js` calls `container.scrollIntoView()` ~50ms
+  after init so the patchboard is on screen even when the
+  visualizer is tall.
+- **Mic permission is optional.** `initAudio` requests the mic
+  inside a try/catch; on failure the chain and patchboard are
+  still built (with `stream = null`). `wireNewMics` and
+  `reattachMic` short-circuit on `!stream`. The user can
+  explore the UI without mic and grant access later.
 
 ---
 
@@ -214,7 +236,7 @@ proposed by the user.)
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 251/251 baseline.
+6. `npx vitest run` — confirm 252/252 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.

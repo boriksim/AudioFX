@@ -171,6 +171,11 @@ function setupVisualizer(audioContext, ecm) {
  *    the OS may otherwise apply before the stream reaches Web Audio.
  *  - `echoCancellation`, `noiseSuppression`, and `autoGainControl` are all
  *    disabled so the raw signal reaches the effect chain untouched.
+ *
+ * Mic permission is requested separately (`requestMicStream`) so the
+ * chain and patchboard UI are built even if the user denies the
+ * permission — they can still explore the UI, swap effects, etc.,
+ * just won't hear anything until mic access is granted.
  */
 async function initAudio() {
   const audioContext = new window.AudioContext({ latencyHint: "interactive" });
@@ -179,14 +184,23 @@ async function initAudio() {
     await audioContext.resume();
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-      channelCount: 1,
-    },
-  });
+  // Try to get the mic, but don't bail if it fails — the patchboard
+  // UI is more important than audio for the "I want to see what's
+  // possible" use case. If the user later grants permission, the
+  // mic gets attached then.
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1,
+      },
+    });
+  } catch (err) {
+    console.warn("Microphone permission denied or unavailable; the chain will run without live input until permission is granted.", err);
+  }
 
   const registry = buildRegistry();
   const ecm = new EffectChainManager(
@@ -203,6 +217,7 @@ async function initAudio() {
    * source can resume the live input.
    */
   async function reattachMic() {
+    if (!stream) return;
     const mic = ecm.effectChain[0]?.audioNode;
     if (mic instanceof InputMic) await mic.initStream(stream);
   }
@@ -225,6 +240,7 @@ async function initAudio() {
    */
   const wiredMics = new WeakSet();
   function wireNewMics() {
+    if (!stream) return;
     for (const entry of ecm.effectChain) {
       if (entry.audioNode instanceof InputMic && !wiredMics.has(entry.audioNode)) {
         entry.audioNode.initStream(stream);
@@ -244,8 +260,10 @@ async function initAudio() {
   };
 
   const inputMic = (await ecm.addEffect("input-mic")).audioNode;
-  inputMic.initStream(stream);
-  wiredMics.add(inputMic);
+  if (stream) {
+    inputMic.initStream(stream);
+    wiredMics.add(inputMic);
+  }
 
   await ecm.addEffect("distortion");
   await ecm.addEffect("lowpass");

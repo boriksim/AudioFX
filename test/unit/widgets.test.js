@@ -30,6 +30,19 @@ describe("RangeWidget", () => {
     expect(input.name).toBe("mix");
   });
 
+  it("supports a negative min (e.g. pan from -1 to +1)", () => {
+    const b = makeBinding(0);
+    const el = RangeWidget({ type: "range", min: -1, max: 1, step: 0.01, name: "pan", label: "Pan" }, b);
+    const input = el.querySelector("input");
+    expect(input.min).toBe("-1");
+    expect(input.max).toBe("1");
+    expect(input.value).toBe("0");
+    // The thumb should be in the MIDDLE of the slider, not at the
+    // left edge (0 must be the center of a -1..+1 slider).
+    expect(Number(input.value)).toBeGreaterThan(Number(input.min));
+    expect(Number(input.value)).toBeLessThan(Number(input.max));
+  });
+
   it("initial value reflects the binding", () => {
     const b = makeBinding(0.42);
     const el = RangeWidget({ type: "range", min: 0, max: 1, step: 0.01 }, b);

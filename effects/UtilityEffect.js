@@ -244,6 +244,5 @@ export class UtilityEffect extends BaseEffect {
     if (this.phaseInvert) this.phaseInvert.disconnect();
     if (this.panner) this.panner.disconnect();
     if (this.outputGain) this.outputGain.disconnect();
-    super.destroy();
   }
 }

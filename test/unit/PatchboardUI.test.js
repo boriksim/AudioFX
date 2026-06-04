@@ -36,6 +36,13 @@ describe("PatchboardUI", () => {
     await ecm.addEffect("input-mic", { position: { x: 40, y: 40 } });
     await ecm.addEffect("delay", { position: { x: 320, y: 40 } });
     ui = new PatchboardUI(ecm, { container });
+    // The default in production is useChainOrder: false (the
+    // patch-cable model: nothing auto-wires). Most of the tests
+    // in this describe block were written for the chain-order
+    // model (Phase 4), so opt in here. New tests for the
+    // explicit-only model live in their own describe block.
+    ecm.useChainOrder = true;
+    ui._sync();
   });
 
   it("installs an SVG overlay layer behind the cards", () => {
@@ -414,6 +421,11 @@ describe("PatchboardUI drag-on-wire-to-insert", () => {
     await ecm.addEffect("distortion", { position: { x: 320, y: 40 } });
     await ecm.addEffect("delay", { position: { x: 600, y: 40 } });
     ui = new PatchboardUI(ecm, { container });
+    // Opt in to chain order for the existing chain-order
+    // splice tests. The new explicit-only model is tested
+    // in its own describe.
+    ecm.useChainOrder = true;
+    ui._sync();
   });
 
   it("_findWireNear returns the wire under the pointer (within 30px)", () => {
@@ -495,6 +507,116 @@ describe("PatchboardUI drag-on-wire-to-insert", () => {
   });
 });
 
+describe("PatchboardUI explicit-only (patch-cable) model", () => {
+  let ctx, container, ecm, ui;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="board"></div>';
+    container = document.getElementById("board");
+    ctx = new AudioContext();
+    globalThis.fetch = () => Promise.resolve({ text: () => Promise.resolve("<div>x</div>") });
+    const registry = new PluginRegistry()
+      .register(InputMic)
+      .register(DistortionEffect)
+      .register(DelayEffect);
+    // useChainOrder: false is the default in the new model.
+    ecm = new EffectChainManager(ctx, "#board", registry, { useSchemaUI: true });
+    ui = new PatchboardUI(ecm, { container });
+  });
+
+  it("does NOT auto-wire when a new effect is added (no chain-order wire)", async () => {
+    await ecm.addEffect("input-mic");
+    await ecm.addEffect("delay");
+    // No wires drawn — the patchboard relies on explicit
+    // connections only.
+    expect(container.querySelectorAll(".pb-wire").length).toBe(0);
+  });
+
+  it("disables chain order so addEffect doesn't create implicit connections", async () => {
+    // The patchboard sets ecm.useChainOrder = false in its
+    // constructor so the manager's `rebuildAudioGraph` doesn't
+    // derive chain-order connections.
+    expect(ecm.useChainOrder).toBe(false);
+  });
+
+  it("draws a wire when an explicit connection is added via ecm.connect()", async () => {
+    await ecm.addEffect("input-mic");
+    await ecm.addEffect("delay");
+    const [mic, delay] = ecm.effectChain;
+    ecm.connect(mic.id, delay.id);
+    // Now there's exactly one wire: the explicit connection.
+    const wires = container.querySelectorAll(".pb-wire");
+    expect(wires.length).toBe(1);
+    // The wire is treated as explicit (clicking it would
+    // disconnect, not break the chain).
+    const hit = container.querySelector(".pb-wire-hit");
+    expect(hit._isExplicit).toBe(true);
+  });
+
+  it("draws a master wire when the master output is set", async () => {
+    await ecm.addEffect("input-mic");
+    await ecm.addEffect("delay");
+    const [mic, delay] = ecm.effectChain;
+    ecm.setMasterOutput(mic.id);
+    expect(container.querySelectorAll(".pb-master-wire").length).toBe(1);
+  });
+
+  it("with master set, an effect reaches destination via the master wire", async () => {
+    await ecm.addEffect("input-mic");
+    const [mic] = ecm.effectChain;
+    ecm.setMasterOutput(mic.id);
+    ecm.rebuildAudioGraph();
+    // The polyfill's MockAudioNode.connect pushes the destination
+    // into the source's `connections` array. The master's output
+    // (InputMic.output, which is a GainNode) should have the
+    // audio context's destination in its connections.
+    expect(mic.audioNode.output.connections).toContain(ctx.destination);
+  });
+
+  it("without master, no effect reaches destination even if effects exist", async () => {
+    await ecm.addEffect("input-mic");
+    await ecm.addEffect("delay");
+    ecm.rebuildAudioGraph();
+    const [mic, delay] = ecm.effectChain;
+    // No master, so nothing reaches destination.
+    expect(mic.audioNode.output.connections ?? []).not.toContain(ctx.destination);
+    expect(delay.audioNode.output.connections ?? []).not.toContain(ctx.destination);
+  });
+
+  it("drag-on-wire-to-insert: in explicit-only mode, splices in two new explicit connections", async () => {
+    await ecm.addEffect("input-mic");
+    await ecm.addEffect("delay");
+    const [mic, delay1] = ecm.effectChain;
+    // Add an explicit wire from mic to delay1.
+    ecm.connect(mic.id, delay1.id);
+    expect(ecm.connections.length).toBe(1);
+    // Now add a 2nd delay and insert it onto the wire.
+    const delay2 = await ecm.addEffect("delay");
+    const wire = { from: mic.id, to: delay1.id, fromPort: "out", toPort: "in" };
+    ui._insertIntoWire(delay2, wire);
+    // The chain order is now [mic, delay2, delay1] (delay2 moved
+    // to position 1).
+    expect(ecm.effectChain.map((e) => e.id)).toEqual([mic.id, delay2.id, delay1.id]);
+    // In explicit-only mode, the old wire is dropped and two new
+    // explicit connections are added: mic -> delay2 and
+    // delay2 -> delay1.
+    expect(ecm.connections.length).toBe(2);
+    const hasMicToD2 = ecm.connections.some(
+      (c) => c.from === mic.id && c.to === delay2.id
+    );
+    const hasD2ToD1 = ecm.connections.some(
+      (c) => c.from === delay2.id && c.to === delay1.id
+    );
+    expect(hasMicToD2).toBe(true);
+    expect(hasD2ToD1).toBe(true);
+    // The original mic->delay1 wire is gone.
+    const hasMicToD1 = ecm.connections.some(
+      (c) => c.from === mic.id && c.to === delay1.id
+    );
+    expect(hasMicToD1).toBe(false);
+  });
+});
+
 describe("PatchboardUI multi-port (Phase 4c)", () => {
   let ctx, container, ecm, ui;
 
@@ -512,6 +634,11 @@ describe("PatchboardUI multi-port (Phase 4c)", () => {
     await ecm.addEffect("channel-splitter");
     await ecm.addEffect("distortion");
     ui = new PatchboardUI(ecm, { container });
+    // Multi-port tests assume the chain-order model
+    // (chain order uses the first declared output port for
+    // multi-port nodes).
+    ecm.useChainOrder = true;
+    ui._sync();
   });
 
   it("renders two output port dots on a ChannelSplitter card (L and R)", () => {

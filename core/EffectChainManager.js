@@ -61,6 +61,25 @@ export class EffectChainManager {
      */
     this.useMasterOutput = options.useMasterOutput === true;
     /**
+     * When true (the default for legacy / tests), the manager
+     * derives chain-order connections at rebuild time:
+     * `chain[i] -> chain[i+1]` for all `i`. This is the convenient
+     * model where adding an effect automatically wires it to the
+     * previous one.
+     *
+     * When false, the manager does NOT derive any chain-order
+     * connections. All connections must be made explicitly via
+     * `connect(from, to, opts)`. Newly added effects are silent
+     * until the user wires them. The PatchboardUI sets this to
+     * `false` so the patchboard matches the "patch cables" mental
+     * model: nothing is connected until the user drops a wire.
+     *
+     * `chainBreaks` is irrelevant in `useChainOrder: false` mode
+     * (there are no chain-order connections to break).
+     * @type {boolean}
+     */
+    this.useChainOrder = options.useChainOrder !== false;
+    /**
      * The id of the effect whose `output` is connected to
      * `audioContext.destination` (only consulted when
      * `useMasterOutput` is true). `null` means no master is
@@ -261,11 +280,14 @@ export class EffectChainManager {
     if (!this.effectChain.some((e) => e.id === toId)) {
       throw new Error(`connect: unknown destination node '${toId}'`);
     }
-    // Already covered by chain order AND not broken by the user? No
-    // need to add an explicit entry. If the chain-order pair IS broken,
-    // the explicit connect() is the user's way of re-wiring the pair —
-    // we honor it.
+    // Already covered by chain order AND not broken by the user?
+    // No need to add an explicit entry. If the chain-order pair IS
+    // broken, the explicit connect() is the user's way of re-wiring
+    // the pair — we honor it. If `useChainOrder` is false, chain
+    // order is not derived and never covers anything, so this whole
+    // check is skipped.
     if (
+      this.useChainOrder &&
       this._isChainConnection(fromId, toId, fromPort, toPort) &&
       !this.chainBreaks.has(`${fromId}|${toId}`)
     ) {
@@ -498,12 +520,14 @@ export class EffectChainManager {
     // Build the effective connection set, dedup by (from, fromPort, to, toPort).
     const effective = new Map(); // key -> {fromId, fromPort, toId, toPort}
     const keyOf = (c) => `${c.from}|${c.fromPort}|${c.to}|${c.toPort}`;
-    for (let i = 0; i < this.effectChain.length - 1; i++) {
-      const c = this._chainOrderConnection(i);
-      if (c) {
-        // Skip chain-order connections the user has explicitly broken.
-        if (!this.chainBreaks.has(`${c.from}|${c.to}`)) {
-          effective.set(keyOf(c), c);
+    if (this.useChainOrder) {
+      for (let i = 0; i < this.effectChain.length - 1; i++) {
+        const c = this._chainOrderConnection(i);
+        if (c) {
+          // Skip chain-order connections the user has explicitly broken.
+          if (!this.chainBreaks.has(`${c.from}|${c.to}`)) {
+            effective.set(keyOf(c), c);
+          }
         }
       }
     }

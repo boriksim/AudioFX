@@ -57,6 +57,13 @@ export class PatchboardUI {
     // legacy auto-connect-sinks-to-destination behavior.
     ecm.useMasterOutput = true;
 
+    // The patchboard is also a "patch cables" UI: no chain-order
+    // connections are derived. Adding an effect creates an
+    // unconnected card; the user wires it to others and to the
+    // master port manually. We disable `useChainOrder` so the
+    // manager only respects explicit `connect()` calls.
+    ecm.useChainOrder = false;
+
     // Make the container a positioning context for the absolute
     // cards. Set position: relative unconditionally — the CSS
     // already does the same via `.effects-container.patchboard`,
@@ -98,7 +105,7 @@ export class PatchboardUI {
     header.className = "pb-header";
     header.innerHTML = `
       <span class="pb-title">Patchboard</span>
-      <span class="pb-hint">drag a card to move · drag a port to wire · click any wire to disconnect · drop a card on a wire to insert it</span>
+      <span class="pb-hint">drag a card to move · drag a port to wire · click any wire to disconnect · drop a card on a wire to insert it · wire an effect to the master port to hear it</span>
     `;
     this.container.appendChild(header);
   }
@@ -456,15 +463,21 @@ export class PatchboardUI {
    * The wire's geometry is approximated from the port centers
    * using the same Bezier as the visual wire; we sample points
    * along the Bezier and return the closest.
+   *
+   * In `useChainOrder: false` mode (the patchboard's default),
+   * only explicit connections are considered — there are no
+   * chain-order wires to insert between.
    */
   _findWireNear(clientX, clientY) {
     const TOLERANCE = 30;
     const nodeById = new Map();
     for (const e of this.ecm.effectChain) nodeById.set(e.id, e);
     const candidates = [];
-    for (let i = 0; i < this.ecm.effectChain.length - 1; i++) {
-      const c = this.ecm._chainOrderConnection(i);
-      if (c && !this.ecm.isChainBroken(c.from, c.to)) candidates.push(c);
+    if (this.ecm.useChainOrder) {
+      for (let i = 0; i < this.ecm.effectChain.length - 1; i++) {
+        const c = this.ecm._chainOrderConnection(i);
+        if (c && !this.ecm.isChainBroken(c.from, c.to)) candidates.push(c);
+      }
     }
     for (const c of this.ecm.connections) candidates.push(c);
     let best = null;
@@ -512,12 +525,19 @@ export class PatchboardUI {
   }
 
   /**
-   * Splice `effectObj` into the chain between the source and
-   * destination of the given wire. The wire itself is removed
-   * (its slot is replaced by two chain-order wires: source →
-   * effectObj → destination). Both effects stay in the chain;
-   * the inserted card is moved to the position right after
-   * `wire.from` so the new chain order flows correctly.
+   * Splice `effectObj` between the source and destination of the
+   * given wire. The wire itself is removed, and two new wires
+   * are created in its place: source → effectObj, effectObj →
+   * destination. Both effects stay in the chain; the inserted
+   * card is moved to the position right after `wire.from` so the
+   * new chain order flows correctly.
+   *
+   * In `useChainOrder: true` mode, the chain-order derivation
+   * provides the new wiring (after moveEffect) and the explicit
+   * `connect()` calls are skipped. In `useChainOrder: false` mode
+   * (the patchboard's default), the two `connect()` calls are
+   * what create the new audio path; the chain order is purely
+   * cosmetic.
    */
   _insertIntoWire(effectObj, wire) {
     const fromIdx = this.ecm.effectChain.findIndex((e) => e.id === wire.from);
@@ -530,23 +550,61 @@ export class PatchboardUI {
     const currentIdx = this.ecm.effectChain.findIndex((e) => e.id === effectObj.id);
     if (currentIdx === -1) return;
     if (currentIdx !== newIdx) this.ecm.moveEffect(effectObj.id, newIdx);
-    // If the wire was an explicit connection, disconnect it.
-    // The chain order will now route through the inserted card,
-    // so the explicit edge would create a duplicate path.
-    const isExplicit = this.ecm.connections.some(
-      (x) => x.from === wire.from && x.to === wire.to && x.fromPort === wire.fromPort && x.toPort === wire.toPort
-    );
-    if (isExplicit) {
-      try {
-        this.ecm.disconnect(wire.from, wire.to, { fromPort: wire.fromPort, toPort: wire.toPort });
-      } catch (err) {
+
+    // Always drop the wire we just landed on (whether it was
+    // chain-order or explicit). In useChainOrder: false, this
+    // is the only way to remove the old audio path. In
+    // useChainOrder: true, the chain array has been rearranged
+    // so the chain-order derivation will now route through the
+    // inserted card; the explicit disconnect prevents a
+    // duplicate path.
+    try {
+      this.ecm.disconnect(wire.from, wire.to, { fromPort: wire.fromPort, toPort: wire.toPort });
+    } catch (err) {
+      // disconnect() may throw if the connection was a
+      // chain-order wire that was never in the explicit list
+      // (useChainOrder: true case). That's fine — the chain
+      // array has been rearranged and the old chain-order
+      // connection no longer exists in any form.
+      if (!/not found|chain-order/i.test(String(err?.message ?? err))) {
         console.error("disconnect (insert) failed:", err);
       }
     }
-    // For chain-order wires, no explicit disconnect is needed:
-    // the chain array has been rearranged so the new chain order
-    // is from → NEW → ... → to. The old chain-order wire is
-    // automatically replaced.
+
+    // In the patch-cable model (useChainOrder: false), the
+    // chain-order derivation does NOT create any connections.
+    // We must explicitly wire the inserted card into the audio
+    // path: source → new, new → destination. The source port
+    // and destination port are taken from the original wire.
+    if (!this.ecm.useChainOrder) {
+      // Don't connect a node to itself. The wire we just landed
+      // on may end at the new card (e.g. the user drops a card
+      // on a wire that was the only path to it).
+      if (wire.from !== effectObj.id) {
+        try {
+          this.ecm.connect(wire.from, effectObj.id, {
+            fromPort: wire.fromPort,
+            toPort: wire.toPort,
+          });
+        } catch (err) {
+          if (!/already/i.test(String(err?.message ?? err))) {
+            console.error("connect (insert, source side) failed:", err);
+          }
+        }
+      }
+      if (wire.to !== effectObj.id) {
+        try {
+          this.ecm.connect(effectObj.id, wire.to, {
+            fromPort: wire.fromPort,
+            toPort: wire.toPort,
+          });
+        } catch (err) {
+          if (!/already/i.test(String(err?.message ?? err))) {
+            console.error("connect (insert, dest side) failed:", err);
+          }
+        }
+      }
+    }
   }
 
   // ------- Drag-to-wire -------
@@ -699,9 +757,11 @@ export class PatchboardUI {
 
   /**
    * Wipe the SVG wires layer and redraw every connection from
-   * `ecm.connections`. Chain-order connections are also drawn
-   * (they're the default wiring). Wires are layered behind cards
-   * (z-index 0 on the SVG).
+   * `ecm.connections`. In `useChainOrder: true` mode, chain-order
+   * connections are also drawn. In `useChainOrder: false` mode
+   * (the patchboard's default), only explicit connections are
+   * drawn — the user wires everything by hand. Wires are layered
+   * behind cards (z-index 0 on the SVG).
    */
   _redrawWires() {
     if (!this._svg) return;
@@ -712,16 +772,16 @@ export class PatchboardUI {
     const nodeById = new Map();
     for (const e of this.ecm.effectChain) nodeById.set(e.id, e);
 
-    // Build the effective connection set (chain order + explicit),
-    // EXCLUDING chain-order connections the user has explicitly
-    // broken via `ecm.breakChain()`. Broken chain-order pairs are
-    // not wired in audio AND not drawn in the UI. Explicit
-    // connections are never affected by chain breaks.
+    // Build the effective connection set:
+    //   - In useChainOrder: include chain-order (minus breaks)
+    //   - Always include explicit connections
     const effective = [];
-    for (let i = 0; i < this.ecm.effectChain.length - 1; i++) {
-      const c = this.ecm._chainOrderConnection(i);
-      if (c && !this.ecm.isChainBroken(c.from, c.to)) {
-        effective.push(c);
+    if (this.ecm.useChainOrder) {
+      for (let i = 0; i < this.ecm.effectChain.length - 1; i++) {
+        const c = this.ecm._chainOrderConnection(i);
+        if (c && !this.ecm.isChainBroken(c.from, c.to)) {
+          effective.push(c);
+        }
       }
     }
     for (const c of this.ecm.connections) effective.push(c);

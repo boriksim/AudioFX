@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { EffectChainManager } from "../../core/EffectChainManager.js";
 import { PluginRegistry } from "../../core/PluginRegistry.js";
 import { DistortionEffect } from "../../effects/DistortionEffect.js";
+import { LowpassEffect } from "../../effects/LowpassEffect.js";
+import { DelayEffect } from "../../effects/DelayEffect.js";
+import { InputMic } from "../../effects/InputMic.js";
+import { InputFile } from "../../effects/InputFile.js";
+import { InputOscillator } from "../../effects/InputOscillator.js";
+import { ChannelSplitter } from "../../effects/ChannelSplitter.js";
 
 /**
  * Round-trip a config through getConfig / applyConfig on each effect.
@@ -33,6 +39,41 @@ describe("Effect getConfig / applyConfig round-trips", () => {
     fx.applyConfig({ strength: 2 });
     expect(fx.strength).toBe(2);
     expect(fx.type).toBe("tanh");
+  });
+});
+
+/**
+ * Regression for the "patchboard blank page" bug: when an effect
+ * file uses `export default class` instead of `export class`, the
+ * top-level module fails to evaluate under the browser's static
+ * import resolution, and the chain is never built. script.js
+ * imports each effect with a named import; every effect file
+ * MUST use a matching named export. This test imports all 7
+ * effects with the same syntax script.js uses, and constructs
+ * each one, to catch any future drift in the export style.
+ */
+describe("Effect modules expose named exports matching script.js imports", () => {
+  it("imports and constructs all 7 effects", () => {
+    expect(typeof DistortionEffect).toBe("function");
+    expect(typeof LowpassEffect).toBe("function");
+    expect(typeof DelayEffect).toBe("function");
+    expect(typeof InputMic).toBe("function");
+    expect(typeof InputFile).toBe("function");
+    expect(typeof InputOscillator).toBe("function");
+    expect(typeof ChannelSplitter).toBe("function");
+
+    const ctx = new AudioContext();
+    const dom = document.createElement("div");
+    const ctorArgs = [ctx, dom];
+    const ctorArgsAbstract = [ctx];
+    for (const Ctor of [DistortionEffect, LowpassEffect, DelayEffect]) {
+      const fx = new Ctor(...ctorArgs);
+      expect(fx).toBeInstanceOf(Ctor);
+    }
+    for (const Ctor of [InputMic, InputFile, InputOscillator, ChannelSplitter]) {
+      const fx = new Ctor(...ctorArgsAbstract);
+      expect(fx).toBeInstanceOf(Ctor);
+    }
   });
 });
 

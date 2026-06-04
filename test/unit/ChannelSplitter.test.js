@@ -6,7 +6,7 @@
  * a specific port) is exercised in PatchboardUI.test.js.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import ChannelSplitter from "../../effects/ChannelSplitter.js";
+import { ChannelSplitter } from "../../effects/ChannelSplitter.js";
 
 describe("ChannelSplitter", () => {
   let ctx, splitter;

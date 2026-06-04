@@ -25,7 +25,7 @@
  */
 import AbstractAudioNode from "../core/AbstractAudioNode.js";
 
-export default class ChannelSplitter extends AbstractAudioNode {
+export class ChannelSplitter extends AbstractAudioNode {
   static manifest = {
     id: "channel-splitter",
     name: "Channel Splitter",

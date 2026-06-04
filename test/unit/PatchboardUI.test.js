@@ -16,7 +16,7 @@ import { PluginRegistry } from "../../core/PluginRegistry.js";
 import { InputMic } from "../../effects/InputMic.js";
 import { DistortionEffect } from "../../effects/DistortionEffect.js";
 import { DelayEffect } from "../../effects/DelayEffect.js";
-import ChannelSplitter from "../../effects/ChannelSplitter.js";
+import { ChannelSplitter } from "../../effects/ChannelSplitter.js";
 
 describe("PatchboardUI", () => {
   let ctx, container, ecm, ui;

@@ -87,11 +87,31 @@ describe("PatchboardUI", () => {
     // mic + delay1 had explicit positions, so they're unchanged.
     expect(mic.position).toEqual({ x: 40, y: 40 });
     expect(delay1.position).toEqual({ x: 320, y: 40 });
-    expect(delay2.position).toBeTruthy();
-    // Default is x=40, y=40+chain.length*160 (card is already in the
-    // chain by the time _defaultPosition runs).
-    expect(delay2.position.x).toBe(40);
-    expect(delay2.position.y).toBe(40 + 3 * 160);
+    // delay2 (index 2 in the chain) gets the default vertical
+    // column position based on its index, NOT the chain length.
+    expect(delay2.position).toEqual({ x: 40, y: 40 + 2 * 160 });
+  });
+
+  it("applies distinct default positions to every card in a fresh chain", async () => {
+    // A chain with no explicit positions should have each card
+    // stack in its own row (y = 40, 200, 360, 520, ...). The
+    // earlier bug used the chain length for every card, putting
+    // all of them on top of each other.
+    const fresh = new EffectChainManager(ctx, "#board", null, { useSchemaUI: true });
+    globalThis.fetch = () => Promise.resolve({ text: () => Promise.resolve("<div>x</div>") });
+    const reg2 = new PluginRegistry().register(InputMic).register(DistortionEffect).register(DelayEffect);
+    fresh.registry = reg2;
+    const ui2 = new PatchboardUI(fresh, { container });
+    await fresh.addEffect("input-mic");
+    await fresh.addEffect("distortion");
+    await fresh.addEffect("delay");
+    ui2._sync();
+    const positions = fresh.effectChain.map((e) => e.position);
+    expect(positions[0].y).toBe(40);
+    expect(positions[1].y).toBe(40 + 1 * 160);
+    expect(positions[2].y).toBe(40 + 2 * 160);
+    // All x are the same.
+    expect(positions.every((p) => p.x === 40)).toBe(true);
   });
 
   it("redraws wires when an effect is removed", async () => {

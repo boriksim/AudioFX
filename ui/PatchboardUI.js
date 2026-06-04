@@ -315,18 +315,20 @@ export class PatchboardUI {
   }
 
   _applyPositions() {
-    for (const e of this.ecm.effectChain) {
-      if (!e.position) e.position = this._defaultPosition();
+    this.ecm.effectChain.forEach((e, i) => {
+      if (!e.position) e.position = this._defaultPosition(i);
       e.dom.style.transform = `translate(${e.position.x}px, ${e.position.y}px)`;
-    }
+    });
   }
 
-  _defaultPosition() {
+  _defaultPosition(index) {
     // Stack new cards vertically with a 24px gutter; first one at
     // the patchboard origin. The runtime can pass `position` to
-    // override (PatchboardUI itself sets it via drag).
-    const idx = this.ecm.effectChain.length;
-    return { x: 40, y: 40 + idx * 160 };
+    // `addEffect()` to override; the PatchboardUI itself sets it
+    // via drag. The `index` is the card's position in the chain so
+    // each card gets a distinct default (otherwise every card in
+    // the same `_applyPositions` call would land on the same spot).
+    return { x: 40, y: 40 + index * 160 };
   }
 
   // ------- Drag-to-move -------

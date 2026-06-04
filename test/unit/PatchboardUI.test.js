@@ -121,6 +121,42 @@ describe("PatchboardUI", () => {
     expect(after).toBe(before - 1);
   });
 
+  it("draws a chain-order wire from the previous last effect to a newly added one", async () => {
+    // Initial chain: [mic, delay] with 1 chain-order wire.
+    const wiresBefore = container.querySelectorAll(".pb-wire").length;
+    expect(wiresBefore).toBe(1);
+    // Add a 3rd effect. The new node should get a chain-order
+    // wire from the previous last effect (the only delay) to
+    // itself.
+    await ecm.addEffect("distortion");
+    const wiresAfter = container.querySelectorAll(".pb-wire");
+    expect(wiresAfter.length).toBe(2);
+    // The new wire is from delay -> distortion. Find its hit
+    // area (which stashes the connection).
+    const hits = container.querySelectorAll(".pb-wire-hit");
+    const [delay, distortion] = ecm.effectChain.slice(1);
+    const newHit = [...hits].find(
+      (h) => h._connection.from === delay.id && h._connection.to === distortion.id
+    );
+    expect(newHit).toBeTruthy();
+  });
+
+  it("grows the container's min-height so all cards (and their wires) are visible", async () => {
+    // Add enough effects to exceed the default 520px min-height.
+    // Each default position is y = 40 + index * 160, so the 5th
+    // effect's bottom edge is at ~700px.
+    for (let i = 0; i < 3; i++) await ecm.addEffect("distortion");
+    const minHeight = parseInt(container.style.minHeight, 10);
+    // Required = maxY (40 + 3*160 = 520) + 220 (card height) + 40 (padding) = 780
+    expect(minHeight).toBeGreaterThanOrEqual(780);
+  });
+
+  it("SVG overlay has overflow: visible so wires are not clipped at the container edge", () => {
+    const svg = container.querySelector(".pb-svg");
+    expect(svg).toBeTruthy();
+    expect(svg.style.overflow).toBe("visible");
+  });
+
   it("doesn't reuse the same DOM node after a remove + add (cards are rebuilt by the manager)", async () => {
     const removedId = ecm.effectChain[1].id;
     await ecm.removeEffect(removedId);

@@ -97,7 +97,7 @@ export class PatchboardUI {
     if (this.container.querySelector(".pb-svg")) return;
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.classList.add("pb-svg");
-    svg.style.cssText = "position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;";
+    svg.style.cssText = "position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: visible;";
     // An arrowhead marker for wire direction.
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
@@ -339,10 +339,24 @@ export class PatchboardUI {
   }
 
   _applyPositions() {
+    let maxY = 0;
     this.ecm.effectChain.forEach((e, i) => {
       if (!e.position) e.position = this._defaultPosition(i);
       e.dom.style.transform = `translate(${e.position.x}px, ${e.position.y}px)`;
+      if (e.position.y > maxY) maxY = e.position.y;
     });
+    // Grow the container so every card is visible. Cards are
+    // absolutely positioned and don't contribute to the
+    // container's intrinsic height, so without this a 5th card
+    // added at the default y=680 would be 160px below the
+    // 520px min-height and the wire to it would be clipped by
+    // the SVG's viewBox. We add a 240px footer so the last
+    // card's bottom edge + a bit of padding is always inside
+    // the container.
+    const cardHeight = 220; // approximate; cards have a 12-16px form, a 80px viz, a 50px header/footer
+    const required = maxY + cardHeight + 40;
+    const current = parseInt(this.container.style.minHeight || "0", 10);
+    if (required > current) this.container.style.minHeight = `${required}px`;
   }
 
   _defaultPosition(index) {

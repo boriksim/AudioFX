@@ -350,6 +350,138 @@ describe("EffectChainManager", () => {
       expect(spy).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe("chain-order breaks", () => {
+    it("starts with no breaks", () => {
+      expect(manager.getChainBreaks()).toEqual([]);
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      expect(manager.isChainBroken(a.id, b.id)).toBe(false);
+    });
+
+    it("breakChain() adds a break and rebuilds", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      const onChange = vi.fn();
+      manager.onChange = onChange;
+
+      const ok = manager.breakChain(a.id, b.id);
+      expect(ok).toBe(true);
+      expect(manager.isChainBroken(a.id, b.id)).toBe(true);
+      expect(manager.getChainBreaks()).toEqual([`${a.id}|${b.id}`]);
+      expect(onChange).toHaveBeenCalledOnce();
+    });
+
+    it("breakChain() returns false for the same break twice", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      expect(manager.breakChain(a.id, b.id)).toBe(true);
+      expect(manager.breakChain(a.id, b.id)).toBe(false);
+      expect(manager.getChainBreaks()).toEqual([`${a.id}|${b.id}`]);
+    });
+
+    it("breakChain() returns false when the pair is not a chain-order pair", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      const c = makeMockEffect("C");
+      manager.effectChain.push(a, b, c);
+      // A -> C is NOT a chain-order pair (chain order is A->B->C).
+      expect(manager.breakChain(a.id, c.id)).toBe(false);
+      expect(manager.getChainBreaks()).toEqual([]);
+    });
+
+    it("breakChain() throws for unknown node ids", () => {
+      const a = makeMockEffect("A");
+      manager.effectChain.push(a);
+      expect(() => manager.breakChain(a.id, "nope")).toThrow(/unknown destination/);
+      expect(() => manager.breakChain("nope", a.id)).toThrow(/unknown source/);
+    });
+
+    it("rebuildAudioGraph skips broken chain-order connections", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      const c = makeMockEffect("C");
+      manager.effectChain.push(a, b, c);
+      manager.breakChain(b.id, c.id);
+
+      // Mock out getOutputNode / getInputNode so we can detect
+      // whether the broken pair was wired.
+      a.audioNode.output.connect.mockClear();
+      b.audioNode.output.connect.mockClear();
+      c.audioNode.output.connect.mockClear();
+
+      manager.rebuildAudioGraph();
+
+      // A->B is wired (chain order, not broken).
+      expect(a.audioNode.output.connect).toHaveBeenCalledWith(b.audioNode.input);
+      // B->C is NOT wired (broken).
+      expect(b.audioNode.output.connect).not.toHaveBeenCalledWith(c.audioNode.input);
+      // C is a sink (no outgoing) — it's wired to destination.
+      expect(c.audioNode.output.connect).toHaveBeenCalledWith(ctx.destination);
+    });
+
+    it("unbreakChain() restores a broken chain-order connection", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      manager.breakChain(a.id, b.id);
+      expect(manager.isChainBroken(a.id, b.id)).toBe(true);
+
+      const ok = manager.unbreakChain(a.id, b.id);
+      expect(ok).toBe(true);
+      expect(manager.isChainBroken(a.id, b.id)).toBe(false);
+      expect(manager.getChainBreaks()).toEqual([]);
+
+      // A->B is wired again.
+      a.audioNode.output.connect.mockClear();
+      manager.rebuildAudioGraph();
+      expect(a.audioNode.output.connect).toHaveBeenCalledWith(b.audioNode.input);
+    });
+
+    it("unbreakChain() returns false when there's nothing to unbreak", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      expect(manager.unbreakChain(a.id, b.id)).toBe(false);
+    });
+
+    it("connect() on a broken chain-order pair succeeds (re-wires the pair explicitly)", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      manager.breakChain(a.id, b.id);
+
+      // connect() must add the explicit connection. The chain
+      // order is skipped because the pair is broken; the
+      // dedup in connect() must NOT fire for a broken chain
+      // pair.
+      const ok = manager.connect(a.id, b.id);
+      expect(ok).toBe(true);
+      expect(manager.connections).toEqual([
+        { from: a.id, to: b.id, fromPort: "out", toPort: "in" },
+      ]);
+    });
+
+    it("removeEffect() cleans up breaks that reference the removed node", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      const c = makeMockEffect("C");
+      manager.effectChain.push(a, b, c);
+      manager.breakChain(a.id, b.id);
+      manager.breakChain(b.id, c.id);
+      expect(manager.getChainBreaks()).toHaveLength(2);
+
+      // Remove B. Both breaks reference B.
+      manager.removeEffect(b.id);
+
+      // The remaining chain is A, C. The break a|b is removed
+      // (it referenced b). The break b|c is removed (it
+      // referenced b). After removal, getChainBreaks() is empty.
+      expect(manager.getChainBreaks()).toEqual([]);
+    });
+  });
   describe("getLatency() (Phase 1.5)", () => {
     it("returns baseLatency, outputLatency, and a sum total", () => {
       const result = manager.getLatency();

@@ -33,6 +33,20 @@ export class EffectChainManager {
     this.effectChain = [];
     /** @type {{from: string, to: string, fromPort: string, toPort: string}[]} */
     this.connections = [];
+    /**
+     * Set of "fromId|toId" keys for chain-order connections the user
+     * has explicitly broken. A broken chain-order connection is
+     * skipped in `rebuildAudioGraph` (no audio path) and is NOT drawn
+     * as a wire by the UI. The two effects themselves stay in the
+     * chain; the user can re-connect them later with
+     * `unbreakChain(fromId, toId)` or by dragging a wire between
+     * their ports. The user can also re-add the same key after a
+     * rebuild — `addEffect` does NOT clear breaks for the new ids,
+     * but `removeEffect` does clean up keys that reference the
+     * removed node.
+     * @type {Set<string>}
+     */
+    this.chainBreaks = new Set();
     this.idCounter = 1;
     this.registry = registry;
     this.useSchemaUI = options.useSchemaUI === true;
@@ -164,6 +178,11 @@ export class EffectChainManager {
     this.connections = this.connections.filter(
       (c) => c.from !== id && c.to !== id
     );
+    // Drop any chain breaks that referenced the removed node.
+    for (const key of [...this.chainBreaks]) {
+      const [fromId, toId] = key.split("|");
+      if (fromId === id || toId === id) this.chainBreaks.delete(key);
+    }
     this.rebuildAudioGraph();
     this.onChange?.();
   }
@@ -217,8 +236,14 @@ export class EffectChainManager {
     if (!this.effectChain.some((e) => e.id === toId)) {
       throw new Error(`connect: unknown destination node '${toId}'`);
     }
-    // Already covered by chain order? No need to add an explicit entry.
-    if (this._isChainConnection(fromId, toId, fromPort, toPort)) {
+    // Already covered by chain order AND not broken by the user? No
+    // need to add an explicit entry. If the chain-order pair IS broken,
+    // the explicit connect() is the user's way of re-wiring the pair —
+    // we honor it.
+    if (
+      this._isChainConnection(fromId, toId, fromPort, toPort) &&
+      !this.chainBreaks.has(`${fromId}|${toId}`)
+    ) {
       return false;
     }
     if (
@@ -287,6 +312,83 @@ export class EffectChainManager {
   }
 
   /**
+   * Break the chain-order connection between two adjacent effects
+   * in the chain. The two effects stay in the chain; the audio
+   * path between them is removed (no input reaches the second
+   * effect from the first), and the UI stops drawing a wire
+   * between their adjacent ports. The user can reconnect with
+   * `unbreakChain` or by dragging a wire between their ports.
+   *
+   * Returns true if a new break was added. The "key" for the break
+   * is the pair of effect ids; port ids are NOT part of the key
+   * (chain order is always the first declared port of each node).
+   * If the pair is not currently a chain-order connection, this
+   * is a no-op and returns false.
+   *
+   * @param {string} fromId
+   * @param {string} toId
+   * @returns {boolean}
+   */
+  breakChain(fromId, toId) {
+    if (!this.effectChain.some((e) => e.id === fromId)) {
+      throw new Error(`breakChain: unknown source node '${fromId}'`);
+    }
+    if (!this.effectChain.some((e) => e.id === toId)) {
+      throw new Error(`breakChain: unknown destination node '${toId}'`);
+    }
+    // Only chain-order pairs are breakable. Check that (fromId -> toId)
+    // is the chain-order connection at some position. Iterating
+    // _chainOrderConnection keeps multi-port logic in one place.
+    let isChain = false;
+    for (let i = 0; i < this.effectChain.length - 1; i++) {
+      const c = this._chainOrderConnection(i);
+      if (c && c.from === fromId && c.to === toId) {
+        isChain = true;
+        break;
+      }
+    }
+    if (!isChain) return false;
+    const key = `${fromId}|${toId}`;
+    if (this.chainBreaks.has(key)) return false;
+    this.chainBreaks.add(key);
+    this.rebuildAudioGraph();
+    this.onChange?.();
+    return true;
+  }
+
+  /**
+   * Restore a previously broken chain-order connection.
+   * @param {string} fromId
+   * @param {string} toId
+   * @returns {boolean} true if a break was removed.
+   */
+  unbreakChain(fromId, toId) {
+    const key = `${fromId}|${toId}`;
+    if (!this.chainBreaks.has(key)) return false;
+    this.chainBreaks.delete(key);
+    this.rebuildAudioGraph();
+    this.onChange?.();
+    return true;
+  }
+
+  /**
+   * @param {string} fromId
+   * @param {string} toId
+   * @returns {boolean}
+   */
+  isChainBroken(fromId, toId) {
+    return this.chainBreaks.has(`${fromId}|${toId}`);
+  }
+
+  /**
+   * @returns {string[]} a snapshot of the current chain breaks as
+   *   "fromId|toId" strings. Order is not guaranteed.
+   */
+  getChainBreaks() {
+    return [...this.chainBreaks];
+  }
+
+  /**
    * Return the chain-order connection at position `i` (i.e. from
    * chain[i] to chain[i+1]). The output port id is the first
    * declared output port of the source, falling back to "out" if
@@ -333,7 +435,12 @@ export class EffectChainManager {
     const keyOf = (c) => `${c.from}|${c.fromPort}|${c.to}|${c.toPort}`;
     for (let i = 0; i < this.effectChain.length - 1; i++) {
       const c = this._chainOrderConnection(i);
-      if (c) effective.set(keyOf(c), c);
+      if (c) {
+        // Skip chain-order connections the user has explicitly broken.
+        if (!this.chainBreaks.has(`${c.from}|${c.to}`)) {
+          effective.set(keyOf(c), c);
+        }
+      }
     }
     for (const c of this.connections) {
       effective.set(keyOf(c), c);

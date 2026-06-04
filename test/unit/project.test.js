@@ -178,6 +178,38 @@ describe("serializeProject", () => {
     // Params are restored.
     expect(target.effectChain[0].audioNode.getConfig().mix).toBe(0.5);
   });
+
+  it("serializeProject persists chain-order breaks in the breaks array", async () => {
+    const m = makeManager(makeRegistry());
+    await m.addEffect("distortion");
+    await m.addEffect("lowpass");
+    await m.addEffect("delay");
+    const [d, l, dl] = m.effectChain;
+    m.breakChain(d.id, l.id);
+    m.breakChain(l.id, dl.id);
+    const doc = serializeProject(m);
+    expect(doc.breaks).toEqual([
+      `${d.id}|${l.id}`,
+      `${l.id}|${dl.id}`,
+    ]);
+  });
+
+  it("deserializeProject restores chain-order breaks", async () => {
+    const m = makeManager(makeRegistry());
+    await m.addEffect("distortion");
+    await m.addEffect("lowpass");
+    const [d, l] = m.effectChain;
+    m.breakChain(d.id, l.id);
+    const doc = serializeProject(m);
+
+    const target = makeManager(makeRegistry());
+    await deserializeProject(doc, target);
+    const [td, tl] = target.effectChain;
+    // The break is restored. The break is identified by id pair
+    // and the deserialized manager is a NEW manager (with new
+    // ids), so the restored break references the new ids.
+    expect(target.isChainBroken(td.id, tl.id)).toBe(true);
+  });
 });
 
 describe("deserializeProject", () => {

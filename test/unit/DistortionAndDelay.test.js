@@ -11,10 +11,10 @@ describe("DistortionEffect", () => {
     fx = new DistortionEffect(ctx, dom);
   });
 
-  it("is bypassed by default", () => {
-    expect(fx.bypass).toBe(true);
-    expect(fx.dryGain.gain.value).toBe(1.0);
-    expect(fx.wetGain.gain.value).toBe(0.0);
+  it("is active by default (mix=1.0 means full wet)", () => {
+    expect(fx.bypass).toBe(false);
+    expect(fx.dryGain.gain.value).toBeCloseTo(0.0);
+    expect(fx.wetGain.gain.value).toBeCloseTo(1.0);
   });
 
   it("mix defaults to 1.0 after setMix(1.0) in constructor", () => {
@@ -66,18 +66,20 @@ describe("DelayEffect", () => {
     fx = new DelayEffect(ctx, dom);
   });
 
-  it("is bypassed by default and feedback is silenced", () => {
-    expect(fx.bypass).toBe(true);
-    expect(fx.feedbackGain.gain.value).toBe(0.0);
+  it("is active by default with feedback gain at its stored value", () => {
+    expect(fx.bypass).toBe(false);
+    expect(fx.feedbackGain.gain.value).toBeCloseTo(0.2);
   });
 
-  it("setBypassed(false) restores feedback gain to stored value", () => {
+  it("feedback stays wired at all times (no disconnect on bypass)", () => {
+    expect(fx.delayNode.connections).toContain(fx.feedbackGain);
+    fx.setBypassed(true);
+    expect(fx.delayNode.connections).toContain(fx.feedbackGain);
     fx.setBypassed(false);
-    expect(fx.feedbackGain.gain.value).toBeCloseTo(fx.feedbackGainValue);
+    expect(fx.delayNode.connections).toContain(fx.feedbackGain);
   });
 
   it("setParam('delayTime') schedules a ramped value", () => {
-    fx.setBypassed(false);
     fx.setParam("delayTime", 0.5);
     // delayTime should be set in range after the ramp's target.
     // The mock AudioParam's value is whatever linearRampToValueAtTime leaves,

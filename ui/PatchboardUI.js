@@ -340,33 +340,43 @@ export class PatchboardUI {
 
   _applyPositions() {
     let maxY = 0;
+    let maxX = 0;
     this.ecm.effectChain.forEach((e, i) => {
       if (!e.position) e.position = this._defaultPosition(i);
       e.dom.style.transform = `translate(${e.position.x}px, ${e.position.y}px)`;
       if (e.position.y > maxY) maxY = e.position.y;
+      if (e.position.x > maxX) maxX = e.position.x;
     });
     // Grow the container so every card is visible. Cards are
     // absolutely positioned and don't contribute to the
-    // container's intrinsic height, so without this a 5th card
-    // added at the default y=680 would be 160px below the
-    // 520px min-height and the wire to it would be clipped by
-    // the SVG's viewBox. We add a 240px footer so the last
-    // card's bottom edge + a bit of padding is always inside
-    // the container.
-    const cardHeight = 220; // approximate; cards have a 12-16px form, a 80px viz, a 50px header/footer
-    const required = maxY + cardHeight + 40;
-    const current = parseInt(this.container.style.minHeight || "0", 10);
-    if (required > current) this.container.style.minHeight = `${required}px`;
+    // container's intrinsic size, so without this a card at
+    // the far right (or bottom) can be clipped by the
+    // SVG's viewBox. We add a footer in both dimensions:
+    //   - 240px past the deepest card's y (so the last card's
+    //     bottom edge + a bit of padding is always visible)
+    //   - 280px past the rightmost card's x (so the last card's
+    //     right edge + a bit of padding is always visible, and
+    //     the wire extending out of the right port has room to
+    //     render)
+    const cardHeight = 220; // approximate; cards have a 12-16px form, an 80px viz, a 50px header/footer
+    const cardWidth = 260;  // approximate; cards have a form with 2-3 columns
+    const requiredH = maxY + cardHeight + 40;
+    const requiredW = maxX + cardWidth + 40;
+    const currentH = parseInt(this.container.style.minHeight || "0", 10);
+    if (requiredH > currentH) this.container.style.minHeight = `${requiredH}px`;
+    if (requiredW > parseInt(this.container.style.minWidth || "0", 10)) {
+      this.container.style.minWidth = `${requiredW}px`;
+    }
   }
 
   _defaultPosition(index) {
-    // Stack new cards vertically with a 24px gutter; first one at
-    // the patchboard origin. The runtime can pass `position` to
-    // `addEffect()` to override; the PatchboardUI itself sets it
-    // via drag. The `index` is the card's position in the chain so
-    // each card gets a distinct default (otherwise every card in
-    // the same `_applyPositions` call would land on the same spot).
-    return { x: 40, y: 40 + index * 160 };
+    // Place new cards in a horizontal row with a 40px gutter.
+    // The runtime can pass `position` to `addEffect()` to override;
+    // the PatchboardUI itself sets it via drag. The `index` is the
+    // card's position in the chain so each card gets a distinct
+    // default (otherwise every card in the same `_applyPositions`
+    // call would land on the same spot).
+    return { x: 40 + index * 280, y: 40 };
   }
 
   // ------- Drag-to-move -------
@@ -547,15 +557,17 @@ export class PatchboardUI {
     const nodeById = new Map();
     for (const e of this.ecm.effectChain) nodeById.set(e.id, e);
 
-    // Build the effective connection set (chain order + explicit).
-    // Use the manager's `_chainOrderConnection` so the same port
-    // ids are used here as in the audio wiring (important for
-    // multi-port effects where the first output port is the default
-    // for chain order).
+    // Build the effective connection set (chain order + explicit),
+    // EXCLUDING chain-order connections the user has explicitly
+    // broken via `ecm.breakChain()`. Broken chain-order pairs are
+    // not wired in audio AND not drawn in the UI. Explicit
+    // connections are never affected by chain breaks.
     const effective = [];
     for (let i = 0; i < this.ecm.effectChain.length - 1; i++) {
       const c = this.ecm._chainOrderConnection(i);
-      if (c) effective.push(c);
+      if (c && !this.ecm.isChainBroken(c.from, c.to)) {
+        effective.push(c);
+      }
     }
     for (const c of this.ecm.connections) effective.push(c);
 
@@ -608,16 +620,17 @@ export class PatchboardUI {
             console.error("disconnect failed:", err);
           }
         } else {
-          // Chain-order wire: clicking removes the destination
-          // effect from the chain. The chain re-routes around
-          // the gap automatically (the manager's rebuildAudioGraph
-          // re-computes chain order from the array). The user can
-          // re-add the effect via the picker, or undo with Ctrl+Z
-          // to restore the previous state (history is wired up
-          // via ecm.onChange).
-          const name = toNode.name ?? c.to;
-          if (confirm(`Disconnect '${name}' from the chain?`)) {
-            this.ecm.removeEffect(c.to);
+          // Chain-order wire: clicking breaks the chain-order
+          // connection (no audio path, no wire drawn) but
+          // PRESERVES both effects. The user can re-connect by
+          // dragging a new wire between the two ports, which
+          // re-uses the standard connect() path. The two
+          // effects themselves stay where they are and the
+          // chain array is unchanged.
+          try {
+            this.ecm.breakChain(c.from, c.to);
+          } catch (err) {
+            console.error("breakChain failed:", err);
           }
         }
       });

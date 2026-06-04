@@ -81,20 +81,20 @@ describe("PatchboardUI", () => {
     expect(delay.dom.style.transform).toContain("320px");
   });
 
-  it("positions new cards in a default vertical column when no position is given", async () => {
+  it("positions new cards in a default horizontal row when no position is given", async () => {
     await ecm.addEffect("delay");
     const [mic, delay1, delay2] = ecm.effectChain;
     // mic + delay1 had explicit positions, so they're unchanged.
     expect(mic.position).toEqual({ x: 40, y: 40 });
     expect(delay1.position).toEqual({ x: 320, y: 40 });
-    // delay2 (index 2 in the chain) gets the default vertical
-    // column position based on its index, NOT the chain length.
-    expect(delay2.position).toEqual({ x: 40, y: 40 + 2 * 160 });
+    // delay2 (index 2 in the chain) gets the default horizontal
+    // row position based on its index, NOT the chain length.
+    expect(delay2.position).toEqual({ x: 40 + 2 * 280, y: 40 });
   });
 
   it("applies distinct default positions to every card in a fresh chain", async () => {
     // A chain with no explicit positions should have each card
-    // stack in its own row (y = 40, 200, 360, 520, ...). The
+    // land in its own column (x = 40, 320, 600, ...). The
     // earlier bug used the chain length for every card, putting
     // all of them on top of each other.
     const fresh = new EffectChainManager(ctx, "#board", null, { useSchemaUI: true });
@@ -107,11 +107,11 @@ describe("PatchboardUI", () => {
     await fresh.addEffect("delay");
     ui2._sync();
     const positions = fresh.effectChain.map((e) => e.position);
-    expect(positions[0].y).toBe(40);
-    expect(positions[1].y).toBe(40 + 1 * 160);
-    expect(positions[2].y).toBe(40 + 2 * 160);
-    // All x are the same.
-    expect(positions.every((p) => p.x === 40)).toBe(true);
+    expect(positions[0].x).toBe(40);
+    expect(positions[1].x).toBe(40 + 1 * 280);
+    expect(positions[2].x).toBe(40 + 2 * 280);
+    // All y are the same.
+    expect(positions.every((p) => p.y === 40)).toBe(true);
   });
 
   it("redraws wires when an effect is removed", async () => {
@@ -141,14 +141,28 @@ describe("PatchboardUI", () => {
     expect(newHit).toBeTruthy();
   });
 
-  it("grows the container's min-height so all cards (and their wires) are visible", async () => {
-    // Add enough effects to exceed the default 520px min-height.
-    // Each default position is y = 40 + index * 160, so the 5th
-    // effect's bottom edge is at ~700px.
+  it("grows the container's min-width so all cards (and their wires) are visible", async () => {
+    // The default layout is a horizontal row. With the initial
+    // 2 cards (mic at x=40, delay at x=320) and 3 more default
+    // positions, the rightmost card is at x=40+4*280=1160, and
+    // minWidth must grow to 1160+260+40=1460 so the wire
+    // extending out of the right port is not clipped.
     for (let i = 0; i < 3; i++) await ecm.addEffect("distortion");
+    const minWidth = parseInt(container.style.minWidth, 10);
+    // Required = maxX (40 + 4*280 = 1160) + 260 (card width) + 40 (padding) = 1460
+    expect(minWidth).toBeGreaterThanOrEqual(1460);
+  });
+
+  it("grows the container's min-height when a card is dragged down", async () => {
+    // Simulate dragging a card below the container's intrinsic height.
+    const card = ecm.effectChain[0].dom;
+    const effectObj = ecm.effectChain[0];
+    effectObj.position = { x: 40, y: 800 };
+    card.style.transform = `translate(${effectObj.position.x}px, ${effectObj.position.y}px)`;
+    ui._applyPositions();
     const minHeight = parseInt(container.style.minHeight, 10);
-    // Required = maxY (40 + 3*160 = 520) + 220 (card height) + 40 (padding) = 780
-    expect(minHeight).toBeGreaterThanOrEqual(780);
+    // Required = 800 (y) + 220 (card height) + 40 (padding) = 1060
+    expect(minHeight).toBeGreaterThanOrEqual(1060);
   });
 
   it("SVG overlay has overflow: visible so wires are not clipped at the container edge", () => {
@@ -226,37 +240,57 @@ describe("PatchboardUI", () => {
     expect(hit.getAttribute("pointer-events")).toBe("stroke");
   });
 
-  it("chain-order wire click removes the destination from the chain (when confirmed)", async () => {
-    // 2-effect chain: mic -> delay. 1 chain-order wire.
+  it("chain-order wire click breaks the connection but preserves both effects", async () => {
+    // 2-effect chain: mic -> delay. Add a 3rd to give us a real
+    // chain-order wire to break. Chain is now mic, d1, d2.
     await ecm.addEffect("delay");
-    // Chain is now mic, d1, d2 with 2 chain-order wires.
+    const d1 = ecm.effectChain[1];
     const d2 = ecm.effectChain[2];
     const hits = container.querySelectorAll(".pb-wire-hit");
     expect(hits.length).toBe(2);
-    // Find the hit area that points to d2 (the last one).
-    const hitToD2 = [...hits].find((h) => h._connection.to === d2.id);
+    // Find the wire from d1 to d2.
+    const hitToD2 = [...hits].find(
+      (h) => h._connection.from === d1.id && h._connection.to === d2.id
+    );
     expect(hitToD2).toBeTruthy();
     expect(hitToD2._isExplicit).toBe(false);
-    // Mock confirm() to accept the disconnect.
-    globalThis.confirm = () => true;
+    // Spy on confirm() to make sure the click handler doesn't call
+    // it (the previous design had a confirm prompt; the new design
+    // is a single click with no prompt).
+    const confirmSpy = vi.fn(() => true);
+    globalThis.confirm = confirmSpy;
     hitToD2.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    // d2 is removed; chain is back to mic, d1.
-    expect(ecm.effectChain.length).toBe(2);
-    expect(ecm.effectChain.some((e) => e.id === d2.id)).toBe(false);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    // Both effects are STILL in the chain (we didn't remove either).
+    expect(ecm.effectChain.length).toBe(3);
+    expect(ecm.effectChain.some((e) => e.id === d1.id)).toBe(true);
+    expect(ecm.effectChain.some((e) => e.id === d2.id)).toBe(true);
+    // The chain break is recorded.
+    expect(ecm.isChainBroken(d1.id, d2.id)).toBe(true);
+    // The wire is gone (only 1 wire remains: the still-active mic -> d1).
+    const wiresAfter = container.querySelectorAll(".pb-wire");
+    expect(wiresAfter.length).toBe(1);
   });
 
-  it("chain-order wire click is a no-op when confirm is cancelled", async () => {
+  it("re-connecting a broken chain-order via explicit connect() restores the wire", async () => {
     await ecm.addEffect("delay");
+    const d1 = ecm.effectChain[1];
     const d2 = ecm.effectChain[2];
-    const hits = container.querySelectorAll(".pb-wire-hit");
-    const hitToD2 = [...hits].find((h) => h._connection.to === d2.id);
-    expect(hitToD2).toBeTruthy();
-    // Mock confirm() to reject the disconnect.
-    globalThis.confirm = () => false;
-    hitToD2.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    // d2 is still there.
-    expect(ecm.effectChain.length).toBe(3);
-    expect(ecm.effectChain.some((e) => e.id === d2.id)).toBe(true);
+    // Break the chain-order.
+    ecm.breakChain(d1.id, d2.id);
+    expect(container.querySelectorAll(".pb-wire").length).toBe(1);
+    // Re-wire explicitly. The connect() must succeed (the
+    // chain-order pair is broken, so the dedup check no
+    // longer fires).
+    const ok = ecm.connect(d1.id, d2.id);
+    expect(ok).toBe(true);
+    expect(ecm.connections).toEqual([
+      { from: d1.id, to: d2.id, fromPort: "out", toPort: "in" },
+    ]);
+    // 2 wires again (the original mic->d1 chain-order + the
+    // explicit d1->d2 reconnection).
+    const wiresAfter = container.querySelectorAll(".pb-wire");
+    expect(wiresAfter.length).toBe(2);
   });
 
   it("_portAt tolerates up to 10px of pointer-port distance", () => {

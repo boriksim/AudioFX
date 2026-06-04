@@ -39,30 +39,32 @@ export default class AbstractEffectNode extends AbstractAudioNode {
   /**
    * Toggle the dry/wet bypass.
    *
-   * In addition to the gain-based mute, this method also *disconnects* the
-   * wet path from the audio graph while the effect is bypassed. That stops
-   * the effect's DSP from processing samples (saves CPU, eliminates a
-   * source of glitches in long chains), and the dry signal still flows
-   * through `dryGain`. When bypass is cleared the wet path is reconnected.
+   * The dry path (`input → dryGain → output`) and the wet path
+   * (`input → [DSP] → effectOutput → wetGain → output`) are BOTH
+   * kept wired at all times. Bypass just controls the gains:
+   *   - bypassed: dryGain=1, wetGain=0  → audio passes through
+   *     untouched, the DSP runs but its output is muted.
+   *   - active:   dryGain=1-mix, wetGain=mix  → dry and wet are
+   *     summed at the output by the current mix.
+   *
+   * This is a small CPU trade-off (the DSP runs even in bypass)
+   * but it's a HUGE reliability win: no `node.disconnect(specific
+   * destination)` calls, which are not perfectly consistent across
+   * browsers and have been the cause of "I can hear the source
+   * alone but not through any effect" reports. The earlier version
+   * disconnected `effectOutput → wetGain` in bypass mode and
+   * reconnected it on un-bypass. That code path was correct on
+   * paper but turned out to be the failure mode in at least one
+   * real-world browser.
    */
   setBypassed(bypassed) {
     this.bypass = bypassed;
     if (bypassed) {
-      try {
-        this.effectOutput.disconnect(this.wetGain);
-      } catch (_) {
-        // Already disconnected — safe to ignore.
-      }
       this.dryGain.gain.value = 1.0;
       this.wetGain.gain.value = 0.0;
     } else {
-      try {
-        this.effectOutput.connect(this.wetGain);
-      } catch (_) {
-        // connect() is idempotent in some browsers but not all; ignore
-        // a duplicate-connect error so toggling rapidly is safe.
-      }
-      this.setMix(this.mix);
+      this.dryGain.gain.value = 1 - this.mix;
+      this.wetGain.gain.value = this.mix;
     }
   }
 

@@ -22,7 +22,6 @@ export class DelayEffect extends BaseEffect {
 
     this.delayNode.delayTime.value = 0.3;
     this.feedbackGain.gain.value = 0.2;
-    this.feedbackGainValue = 0.2;
 
     this.input.connect(this.delayNode);
 
@@ -32,7 +31,7 @@ export class DelayEffect extends BaseEffect {
     this.delayNode.connect(this.effectOutput);
 
     this.setMix(0.5);
-    this.setBypassed(true);
+    this.setBypassed(false);
   }
 
   initUI() {
@@ -88,7 +87,6 @@ export class DelayEffect extends BaseEffect {
       case 'delayFeedback':
         value = Math.max(0, Math.min(1, value));
         this.feedbackGain.gain.value = value;
-        this.feedbackGainValue = value;
         break;
 
       case 'mix':
@@ -108,21 +106,6 @@ export class DelayEffect extends BaseEffect {
       case 'mix': return this.mix;
       case 'bypass': return this.bypass;
       default: return undefined;
-    }
-  }
-
-  setBypassed(bypassed) {
-    super.setBypassed(bypassed);
-
-    if (bypassed) {
-      try {
-        this.delayNode.disconnect(this.feedbackGain);
-      } catch (_) { }
-      this.feedbackGainValue = this.feedbackGain.gain.value;
-      this.feedbackGain.gain.value = 0.0;
-    } else {
-      this.delayNode.connect(this.feedbackGain);
-      this.feedbackGain.gain.value = this.feedbackGainValue;
     }
   }
 

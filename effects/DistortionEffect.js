@@ -29,7 +29,7 @@ export class DistortionEffect extends BaseEffect {
     this.postGain.connect(this.effectOutput);
 
     this.setMix(1.0);
-    this.setBypassed(true);
+    this.setBypassed(false);
   }
 
   initUI() {

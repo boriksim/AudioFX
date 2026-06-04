@@ -71,25 +71,34 @@ describe("AbstractEffectNode", () => {
     expect(effect.mix).toBe(0.3);
   });
 
-  describe("hard bypass (Phase 1.5)", () => {
-    it("disconnects the wet path from effectOutput when bypassed", () => {
+  describe("bypass wiring (gain-based)", () => {
+    it("keeps the wet path wired (effectOutput -> wetGain) at all times", () => {
       effect = new TrivialEffect(ctx, dom);
-      // Before toggling, the wet path is connected (effectOutput -> wetGain).
+      // The wet path is wired in the constructor and stays wired
+      // regardless of bypass state. The previous design disconnected
+      // it in bypass mode to save CPU, but `disconnect(specificDest)`
+      // is not perfectly consistent across browsers and was the cause
+      // of "I can hear the source alone but not through any effect"
+      // reports. The new design trades a small CPU cost for a huge
+      // reliability win.
       expect(effect.effectOutput.connections).toContain(effect.wetGain);
-
       effect.setBypassed(true);
-      // After bypass, the wet path is disconnected so the effect's DSP
-      // stops processing samples.
-      expect(effect.effectOutput.connections).not.toContain(effect.wetGain);
-    });
-
-    it("reconnects the wet path when bypass is cleared", () => {
-      effect = new TrivialEffect(ctx, dom);
-      effect.setBypassed(true);
-      expect(effect.effectOutput.connections).not.toContain(effect.wetGain);
-
+      expect(effect.effectOutput.connections).toContain(effect.wetGain);
       effect.setBypassed(false);
       expect(effect.effectOutput.connections).toContain(effect.wetGain);
+    });
+
+    it("bypass controls the dry/wet gain values, not the wiring", () => {
+      effect = new TrivialEffect(ctx, dom);
+      effect.mix = 0.7;
+
+      effect.setBypassed(true);
+      expect(effect.dryGain.gain.value).toBe(1.0);
+      expect(effect.wetGain.gain.value).toBe(0.0);
+
+      effect.setBypassed(false);
+      expect(effect.dryGain.gain.value).toBeCloseTo(0.3);
+      expect(effect.wetGain.gain.value).toBeCloseTo(0.7);
     });
 
     it("rapid toggling is safe (no throws on duplicate connect/disconnect)", () => {

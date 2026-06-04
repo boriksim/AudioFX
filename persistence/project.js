@@ -180,6 +180,7 @@ export function serializeProject(manager, options = {}) {
     createdAt: options.createdAt ?? now,
     updatedAt: now,
     graph: { nodes, connections },
+    breaks: manager.getChainBreaks ? manager.getChainBreaks() : [],
   };
 }
 
@@ -233,6 +234,24 @@ export async function deserializeProject(project, manager) {
       manager.connect(c.from, c.to, { fromPort: c.fromPort, toPort: c.toPort });
     } catch (err) {
       console.warn(`deserializeProject: failed to wire ${c.from} -> ${c.to}:`, err);
+    }
+  }
+
+  // Re-apply chain-order breaks. We do this AFTER explicit
+  // connections so a saved project that breaks a chain-order pair
+  // AND has an explicit re-connection between the same pair ends
+  // up with the explicit connection in effect (the break stays
+  // dormant — it would be cleaned up by removeEffect anyway).
+  if (Array.isArray(migrated.breaks)) {
+    for (const key of migrated.breaks) {
+      if (typeof key !== "string") continue;
+      const [fromId, toId] = key.split("|");
+      if (!fromId || !toId) continue;
+      try {
+        manager.breakChain(fromId, toId);
+      } catch (err) {
+        console.warn(`deserializeProject: failed to break chain ${fromId}|${toId}:`, err);
+      }
     }
   }
 

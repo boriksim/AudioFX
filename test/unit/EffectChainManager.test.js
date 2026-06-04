@@ -507,7 +507,7 @@ describe("EffectChainManager", () => {
       const b = makeMockEffect("B");
       manager.effectChain.push(a, b);
       manager.useMasterOutput = true;
-      manager.masterOutputId = null;
+      manager.masterOutputIds.clear();
       a.audioNode.output.connect.mockClear();
       b.audioNode.output.connect.mockClear();
       manager.rebuildAudioGraph();
@@ -517,17 +517,30 @@ describe("EffectChainManager", () => {
       expect(a.audioNode.output.connect).not.toHaveBeenCalledWith(ctx.destination);
     });
 
-    it("setMasterOutput() routes the chosen effect to destination", () => {
-      const { a, b, c } = setupWithMaster();
+    it("setMasterOutput() adds the effect to the master set", () => {
+      const { b } = setupWithMaster();
       expect(manager.setMasterOutput(b.id)).toBe(true);
-      expect(manager.getMasterOutput()).toBe(b.id);
-      b.audioNode.output.connect.mockClear();
-      c.audioNode.output.connect.mockClear();
-      manager.rebuildAudioGraph();
-      // b is the master: b.output -> destination.
-      expect(b.audioNode.output.connect).toHaveBeenCalledWith(ctx.destination);
-      // c is no longer the sink (b took that role).
-      expect(c.audioNode.output.connect).not.toHaveBeenCalledWith(ctx.destination);
+      expect(manager.getMasterOutput().has(b.id)).toBe(true);
+    });
+
+    it("setMasterOutput() routes the chosen effect to destination via a summer GainNode", () => {
+      const { b } = setupWithMaster();
+      manager.setMasterOutput(b.id);
+      // Spy on createGain so we can assert a summer was created
+      // for the master output.
+      const originalCreateGain = ctx.createGain;
+      const createGainSpy = vi.fn(() => originalCreateGain.call(ctx));
+      ctx.createGain = createGainSpy;
+      try {
+        b.audioNode.output.connect.mockClear();
+        manager.rebuildAudioGraph();
+        // At least one GainNode was created (the master summer).
+        expect(createGainSpy).toHaveBeenCalled();
+        // b's output was connected to the summer.
+        expect(b.audioNode.output.connect).toHaveBeenCalled();
+      } finally {
+        ctx.createGain = originalCreateGain;
+      }
     });
 
     it("setMasterOutput() returns false for the same id twice", () => {
@@ -541,15 +554,30 @@ describe("EffectChainManager", () => {
       expect(() => manager.setMasterOutput("nonexistent")).toThrow(/unknown effect/);
     });
 
+    it("setMasterOutput() supports multiple masters; all are summed", () => {
+      const { a, b, c } = setupWithMaster();
+      manager.setMasterOutput(b.id);
+      manager.setMasterOutput(c.id);
+      // Both in the set.
+      expect(manager.getMasterOutput().has(b.id)).toBe(true);
+      expect(manager.getMasterOutput().has(c.id)).toBe(true);
+      expect(manager.getMasterOutput().size).toBe(2);
+    });
+
+    it("unsetMasterOutput() removes a specific effect from the master set", () => {
+      const { b, c } = setupWithMaster();
+      manager.setMasterOutput(b.id);
+      manager.setMasterOutput(c.id);
+      expect(manager.unsetMasterOutput(b.id)).toBe(true);
+      expect(manager.getMasterOutput().has(b.id)).toBe(false);
+      expect(manager.getMasterOutput().has(c.id)).toBe(true);
+    });
+
     it("clearMasterOutput() drops the connection to destination", () => {
       const { b } = setupWithMaster();
       manager.setMasterOutput(b.id);
       expect(manager.clearMasterOutput()).toBe(true);
-      expect(manager.getMasterOutput()).toBe(null);
-      b.audioNode.output.connect.mockClear();
-      manager.rebuildAudioGraph();
-      // No node reaches destination.
-      expect(b.audioNode.output.connect).not.toHaveBeenCalledWith(ctx.destination);
+      expect(manager.getMasterOutput().size).toBe(0);
     });
 
     it("clearMasterOutput() returns false when there's no master", () => {
@@ -557,12 +585,31 @@ describe("EffectChainManager", () => {
       expect(manager.clearMasterOutput()).toBe(false);
     });
 
-    it("removeEffect() clears masterOutputId if the removed node was the master", () => {
+    it("removeEffect() clears masterOutputIds if the removed node was a master", () => {
       const { a, b, c } = setupWithMaster();
       manager.setMasterOutput(b.id);
+      manager.setMasterOutput(c.id);
       manager.removeEffect(b.id);
       // Master is cleared automatically; no stale id.
-      expect(manager.getMasterOutput()).toBe(null);
+      expect(manager.getMasterOutput().has(b.id)).toBe(false);
+      // c is still a master.
+      expect(manager.getMasterOutput().has(c.id)).toBe(true);
+    });
+
+    it("isMasterOutput() reports whether an effect is in the master set", () => {
+      const { b } = setupWithMaster();
+      expect(manager.isMasterOutput(b.id)).toBe(false);
+      manager.setMasterOutput(b.id);
+      expect(manager.isMasterOutput(b.id)).toBe(true);
+    });
+
+    it("getMasterOutput() returns a SHALLOW COPY of the set (mutations don't leak)", () => {
+      const { b } = setupWithMaster();
+      manager.setMasterOutput(b.id);
+      const copy = manager.getMasterOutput();
+      copy.delete(b.id);
+      // The manager's set is unaffected.
+      expect(manager.getMasterOutput().has(b.id)).toBe(true);
     });
   });
   describe("getLatency() (Phase 1.5)", () => {

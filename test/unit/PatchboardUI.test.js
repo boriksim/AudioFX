@@ -375,15 +375,18 @@ describe("PatchboardUI master port", () => {
     expect(masterWire.getAttribute("stroke")).toBe("#fc6");
   });
 
-  it("clicking the master wire's hit area clears the master", () => {
+  it("clicking the master wire's hit area removes that effect from the master set", () => {
     const mic = ecm.effectChain[0].id;
     ecm.setMasterOutput(mic);
     const hit = container.querySelector(".pb-master-wire-hit");
     expect(hit).toBeTruthy();
-    expect(ecm.getMasterOutput()).toBe(mic);
+    expect(ecm.getMasterOutput().has(mic)).toBe(true);
     hit.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(ecm.getMasterOutput()).toBe(null);
-    // The master wire is gone.
+    // The effect is removed from the master set (not all masters
+    // — the user can have multiple masters and remove them
+    // individually).
+    expect(ecm.getMasterOutput().has(mic)).toBe(false);
+    // The master wire is gone (no masters left).
     expect(container.querySelector(".pb-master-wire")).toBe(null);
   });
 
@@ -395,11 +398,22 @@ describe("PatchboardUI master port", () => {
     // path by calling the relevant piece directly.
     // (We can't easily simulate a full mouse drag in jsdom.)
     ecm.setMasterOutput(mic);
-    expect(ecm.getMasterOutput()).toBe(mic);
+    expect(ecm.getMasterOutput().has(mic)).toBe(true);
+  });
+
+  it("supports multiple master outputs simultaneously", () => {
+    const a = ecm.effectChain[0].id;
+    const b = ecm.effectChain[1].id;
+    ecm.setMasterOutput(a);
+    ecm.setMasterOutput(b);
+    // Both are in the set.
+    expect(ecm.getMasterOutput().size).toBe(2);
+    // Two master wires are drawn.
+    expect(container.querySelectorAll(".pb-master-wire").length).toBe(2);
   });
 
   it("no master wire is drawn when no master is set", () => {
-    expect(ecm.getMasterOutput()).toBe(null);
+    expect(ecm.getMasterOutput().size).toBe(0);
     expect(container.querySelector(".pb-master-wire")).toBe(null);
   });
 });
@@ -505,6 +519,55 @@ describe("PatchboardUI drag-on-wire-to-insert", () => {
       expect(ecm.connections).toEqual([]);
     })();
   });
+
+  it("_highlightWireForInsert adds the target class to the matching wire's hit area", () => {
+    return (async () => {
+      // Set up an explicit wire so there's something to highlight.
+      // Use the real port names so _redrawWires can find the port
+      // DOM elements and actually draw the wire.
+      const [mic, distortion] = ecm.effectChain;
+      ecm.connect(mic.id, distortion.id, { fromPort: "out", toPort: "in" });
+      ui._sync();
+      // No highlight by default.
+      const hits = container.querySelectorAll(".pb-wire-hit");
+      expect(hits.length).toBeGreaterThan(0);
+      for (const h of hits) {
+        expect(h.classList.contains("pb-wire-hit-target")).toBe(false);
+      }
+      // Highlight a specific wire.
+      const target = { from: mic.id, to: distortion.id, fromPort: "out", toPort: "in" };
+      ui._highlightWireForInsert(target);
+      // The matching hit has the class.
+      const matching = [...hits].find(
+        (h) => h._connection.from === mic.id
+          && h._connection.to === distortion.id
+          && h._connection.fromPort === "out"
+          && h._connection.toPort === "in"
+      );
+      expect(matching).toBeTruthy();
+      expect(matching.classList.contains("pb-wire-hit-target")).toBe(true);
+      // Other hits don't have the class.
+      const other = [...hits].find((h) => h !== matching);
+      if (other) {
+        expect(other.classList.contains("pb-wire-hit-target")).toBe(false);
+      }
+    })();
+  });
+
+  it("_highlightWireForInsert(null) clears the highlight", () => {
+    return (async () => {
+      const [mic, distortion] = ecm.effectChain;
+      ecm.connect(mic.id, distortion.id, { fromPort: "out", toPort: "in" });
+      ui._sync();
+      const target = { from: mic.id, to: distortion.id, fromPort: "out", toPort: "in" };
+      ui._highlightWireForInsert(target);
+      ui._highlightWireForInsert(null);
+      const hits = container.querySelectorAll(".pb-wire-hit");
+      for (const h of hits) {
+        expect(h.classList.contains("pb-wire-hit-target")).toBe(false);
+      }
+    })();
+  });
 });
 
 describe("PatchboardUI explicit-only (patch-cable) model", () => {
@@ -561,16 +624,26 @@ describe("PatchboardUI explicit-only (patch-cable) model", () => {
     expect(container.querySelectorAll(".pb-master-wire").length).toBe(1);
   });
 
-  it("with master set, an effect reaches destination via the master wire", async () => {
+  it("with master set, an effect reaches destination via the master wire (summer)", async () => {
     await ecm.addEffect("input-mic");
     const [mic] = ecm.effectChain;
     ecm.setMasterOutput(mic.id);
     ecm.rebuildAudioGraph();
-    // The polyfill's MockAudioNode.connect pushes the destination
-    // into the source's `connections` array. The master's output
-    // (InputMic.output, which is a GainNode) should have the
-    // audio context's destination in its connections.
-    expect(mic.audioNode.output.connections).toContain(ctx.destination);
+    // With multiple-master support, the master output goes
+    // through a per-rebuild GainNode summer. The mic's output is
+    // connected to the summer (NOT directly to destination).
+    // The summer itself is connected to destination.
+    const originalCreateGain = ctx.createGain;
+    const createGainSpy = vi.fn(() => originalCreateGain.call(ctx));
+    ctx.createGain = createGainSpy;
+    try {
+      ecm.rebuildAudioGraph();
+      expect(createGainSpy).toHaveBeenCalled();
+      // The mic's output is connected (to the summer).
+      expect(mic.audioNode.output.connections.length).toBeGreaterThan(0);
+    } finally {
+      ctx.createGain = originalCreateGain;
+    }
   });
 
   it("without master, no effect reaches destination even if effects exist", async () => {

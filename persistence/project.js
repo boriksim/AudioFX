@@ -181,6 +181,7 @@ export function serializeProject(manager, options = {}) {
     updatedAt: now,
     graph: { nodes, connections },
     breaks: manager.getChainBreaks ? manager.getChainBreaks() : [],
+    masterOutputIds: manager.getMasterOutput ? Array.from(manager.getMasterOutput()) : [],
   };
 }
 
@@ -251,6 +252,19 @@ export async function deserializeProject(project, manager) {
         manager.breakChain(fromId, toId);
       } catch (err) {
         console.warn(`deserializeProject: failed to break chain ${fromId}|${toId}:`, err);
+      }
+    }
+  }
+
+  // Re-apply master output ids. Has effect only when
+  // `useMasterOutput` is true on the manager.
+  if (Array.isArray(migrated.masterOutputIds)) {
+    for (const id of migrated.masterOutputIds) {
+      if (typeof id !== "string") continue;
+      try {
+        manager.setMasterOutput(id);
+      } catch (err) {
+        console.warn(`deserializeProject: failed to set master output '${id}':`, err);
       }
     }
   }

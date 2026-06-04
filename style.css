@@ -410,6 +410,18 @@ canvas {
 .pb-master-wire {
     stroke: #fc6;
 }
+
+/* Live highlight for the wire the user is about to drop a card
+   onto. The hit area is wider than the visible wire (16px
+   stroke vs 2px), so the highlight is also wide. Bright cyan
+   + a glow makes the target obvious. */
+.pb-wire-hit.pb-wire-hit-target {
+    stroke: #fff;
+    stroke-width: 20;
+    opacity: 0.45;
+    filter: drop-shadow(0 0 6px #6cf) drop-shadow(0 0 12px #6cf);
+    pointer-events: none;
+}
 .pb-master-wire-hit {
     stroke: transparent;
     stroke-width: 16;

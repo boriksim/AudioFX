@@ -49,17 +49,28 @@ export class EffectChainManager {
     this.chainBreaks = new Set();
     /**
      * When true, the manager requires an EXPLICIT master output.
-     * The effect whose id is in `masterOutputId` is connected to
-     * `audioContext.destination`; everything else is NOT. If no
-     * master is set, NO audio reaches the destination (silence).
-     * When false (the default), the legacy auto-connect behavior
-     * applies: every sink (node with no outgoing connection) is
-     * connected to destination. The PatchboardUI sets this to
-     * `true` so the user has to wire an effect to the master port
-     * to hear anything.
+     * The effects whose ids are in `masterOutputIds` are summed
+     * to `audioContext.destination` (via a per-rebuild GainNode
+     * summer); everything else is NOT. If no masters are set, NO
+     * audio reaches the destination (silence). When false (the
+     * default), the legacy auto-connect behavior applies: every
+     * sink (node with no outgoing connection) is connected to
+     * destination. The PatchboardUI sets this to `true` so the
+     * user has to wire effects to the master port to hear
+     * anything. Multiple effects can be masters — they are all
+     * summed to destination, so the user can route several
+     * signal paths in parallel.
      * @type {boolean}
      */
     this.useMasterOutput = options.useMasterOutput === true;
+    /**
+     * The set of effect ids whose `output` is summed to
+     * `audioContext.destination` (only consulted when
+     * `useMasterOutput` is true). An empty set means no audio
+     * reaches the destination.
+     * @type {Set<string>}
+     */
+    this.masterOutputIds = new Set();
     /**
      * When true (the default for legacy / tests), the manager
      * derives chain-order connections at rebuild time:
@@ -79,14 +90,6 @@ export class EffectChainManager {
      * @type {boolean}
      */
     this.useChainOrder = options.useChainOrder !== false;
-    /**
-     * The id of the effect whose `output` is connected to
-     * `audioContext.destination` (only consulted when
-     * `useMasterOutput` is true). `null` means no master is
-     * set; in that case, no audio reaches the destination.
-     * @type {string|null}
-     */
-    this.masterOutputId = null;
     this.idCounter = 1;
     this.registry = registry;
     this.useSchemaUI = options.useSchemaUI === true;
@@ -226,7 +229,7 @@ export class EffectChainManager {
     // If the removed node was the master output, clear it so the
     // user doesn't end up with a stale "master" pointing at a
     // node that's no longer in the chain.
-    if (this.masterOutputId === id) this.masterOutputId = null;
+    if (this.masterOutputIds.has(id)) this.masterOutputIds.delete(id);
     this.rebuildAudioGraph();
     this.onChange?.();
   }
@@ -436,43 +439,73 @@ export class EffectChainManager {
   }
 
   /**
-   * Set the master output effect. Its `output` (or
-   * `getOutputNode("out")`) is connected to `audioContext.destination`
-   * by `rebuildAudioGraph`. Has effect only when
+   * Add `effectId` to the master output set. The effect's `output`
+   * (its `getOutputNode("out")`) is summed into
+   * `audioContext.destination` (via a per-rebuild summer gain
+   * node) by `rebuildAudioGraph`. Multiple effects can be added;
+   * they are all summed to destination. Has effect only when
    * `useMasterOutput` is true.
    *
+   * Returns true if the set changed (the id was newly added).
+   *
    * @param {string} effectId
-   * @returns {boolean} true if the master changed.
+   * @returns {boolean}
    */
   setMasterOutput(effectId) {
     if (!this.effectChain.some((e) => e.id === effectId)) {
       throw new Error(`setMasterOutput: unknown effect '${effectId}'`);
     }
-    if (this.masterOutputId === effectId) return false;
-    this.masterOutputId = effectId;
+    if (this.masterOutputIds.has(effectId)) return false;
+    this.masterOutputIds.add(effectId);
     this.rebuildAudioGraph();
     this.onChange?.();
     return true;
   }
 
   /**
-   * Clear the master output. When `useMasterOutput` is true and no
-   * master is set, no audio reaches the destination.
-   * @returns {boolean} true if the master was cleared (was non-null).
+   * Remove a specific effect from the master output set. If the
+   * id was not in the set, returns false (no-op). To clear all
+   * masters, use `clearMasterOutput()`.
+   *
+   * @param {string} effectId
+   * @returns {boolean}
+   */
+  unsetMasterOutput(effectId) {
+    if (!this.masterOutputIds.has(effectId)) return false;
+    this.masterOutputIds.delete(effectId);
+    this.rebuildAudioGraph();
+    this.onChange?.();
+    return true;
+  }
+
+  /**
+   * Clear all master outputs. When `useMasterOutput` is true and
+   * no masters are set, no audio reaches the destination.
+   * @returns {boolean} true if any master was cleared.
    */
   clearMasterOutput() {
-    if (this.masterOutputId === null) return false;
-    this.masterOutputId = null;
+    if (this.masterOutputIds.size === 0) return false;
+    this.masterOutputIds.clear();
     this.rebuildAudioGraph();
     this.onChange?.();
     return true;
   }
 
   /**
-   * @returns {string|null} the current master output id, or null.
+   * @returns {Set<string>} a shallow copy of the master output
+   *   set. Returns a new Set so callers can iterate without
+   *   affecting the manager's internal state.
    */
   getMasterOutput() {
-    return this.masterOutputId;
+    return new Set(this.masterOutputIds);
+  }
+
+  /**
+   * @returns {boolean} true if `effectId` is currently a master
+   *   output.
+   */
+  isMasterOutput(effectId) {
+    return this.masterOutputIds.has(effectId);
   }
 
   /**
@@ -578,23 +611,28 @@ export class EffectChainManager {
       }
     }
 
-    // Master output: when `useMasterOutput` is true, ONLY the
-    // effect whose id is in `masterOutputId` is connected to
-    // `audioContext.destination`. If no master is set, no audio
-    // reaches the destination (silence). When `useMasterOutput` is
-    // false, the legacy behavior applies: every sink (node with
-    // no outgoing connection) is connected to destination. The
-    // PatchboardUI sets `useMasterOutput: true` so the user has
-    // to wire an effect to the master port to hear anything.
+    // Master output: when `useMasterOutput` is true, the effects
+    // whose ids are in `masterOutputIds` are summed into
+    // `audioContext.destination` (via a per-rebuild GainNode
+    // summer). If no masters are set, no audio reaches the
+    // destination (silence). When `useMasterOutput` is false, the
+    // legacy behavior applies: every sink (node with no outgoing
+    // connection) is connected to destination. The PatchboardUI
+    // sets `useMasterOutput: true` so the user has to wire at
+    // least one effect to the master port to hear anything.
+    // Multiple effects can be masters — they are all summed.
     if (this.useMasterOutput) {
-      if (this.masterOutputId) {
-        const master = nodeById.get(this.masterOutputId);
-        if (master) {
-          const out = master.audioNode.getOutputNode?.("out") ?? master.audioNode.output;
+      if (this.masterOutputIds.size > 0) {
+        const masterSummer = this.audioContext.createGain();
+        for (const id of this.masterOutputIds) {
+          const m = nodeById.get(id);
+          if (!m) continue;
+          const out = m.audioNode.getOutputNode?.("out") ?? m.audioNode.output;
           if (out) {
-            try { out.connect(this.audioContext.destination); } catch (_) { }
+            try { out.connect(masterSummer); } catch (_) { }
           }
         }
+        try { masterSummer.connect(this.audioContext.destination); } catch (_) { }
       }
     } else {
       for (const e of this.effectChain) {

@@ -436,10 +436,21 @@ export class PatchboardUI {
       };
       card.style.transform = `translate(${effectObj.position.x}px, ${effectObj.position.y}px)`;
       this._redrawWires();
+      // Live highlight: as the card is dragged, find the wire
+      // (if any) under the pointer and mark it so the user can
+      // see they're about to drop on it. The visual feedback is
+      // a class change on the wire's hit area (which the CSS
+      // styles with a brighter stroke and a glow).
+      const targetWire = this._findWireNear(ev.clientX, ev.clientY);
+      this._highlightWireForInsert(targetWire);
     };
     const onUp = (ev) => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      // Clear the live highlight regardless of where the drop
+      // lands. _redrawWires (via the splice's onChange) will
+      // rebuild the wires with the default style.
+      this._highlightWireForInsert(null);
       // Drag-on-wire-to-insert: if the user released the card
       // near an existing wire, insert the card into the chain
       // between the wire's endpoints. The original wire is
@@ -522,6 +533,38 @@ export class PatchboardUI {
       if (d < best) best = d;
     }
     return best;
+  }
+
+  /**
+   * Mark the wire for `connection` as the live insertion target
+   * (during a card drag) by adding a CSS class to its hit area
+   * path. Pass `null` to clear the highlight. The class is
+   * `pb-wire-hit-target`; the corresponding CSS rule lights up
+   * the hit area with a brighter color and a glow so the user
+   * can see "you're about to drop on this wire". The hit area
+   * is wider than the visible wire (16px stroke), so the
+   * highlight is also wider than the wire — easier to see.
+   *
+   * Match is by the connection fields stashed on the hit area
+   * by `_redrawWires`. If no hit area matches, the highlight
+   * is cleared (e.g. when the card moves away from any wire).
+   */
+  _highlightWireForInsert(connection) {
+    if (!this._svg) return;
+    const hits = this._svg.querySelectorAll(".pb-wire-hit");
+    for (const hit of hits) {
+      const c = hit._connection;
+      const match = connection && c
+        && c.from === connection.from
+        && c.to === connection.to
+        && c.fromPort === connection.fromPort
+        && c.toPort === connection.toPort;
+      if (match) {
+        hit.classList.add("pb-wire-hit-target");
+      } else {
+        hit.classList.remove("pb-wire-hit-target");
+      }
+    }
   }
 
   /**
@@ -852,45 +895,51 @@ export class PatchboardUI {
       this._svg.appendChild(hit);
     }
 
-    // Master wire: drawn from the master effect's output port to
-    // the master port. Orange (#fc6) to distinguish it from the
-    // cyan patch wires. Clicking the master wire's hit area
-    // clears the master output (no audio reaches destination).
-    if (this.ecm.masterOutputId) {
-      const masterEffect = nodeById.get(this.ecm.masterOutputId);
-      const masterPortEl = this.container.querySelector(".pb-master-port");
-      if (masterEffect && masterPortEl) {
+    // Master wires: one per master effect. Drawn from each
+    // master effect's output port to the master port. Orange
+    // (#fc6) to distinguish them from the cyan patch wires.
+    // Clicking a master wire's hit area removes that SPECIFIC
+    // effect from the master set (so a multi-master patch can
+    // have just one wire removed without dropping the others).
+    // To clear all masters, the user can right-click the master
+    // port or use a separate UI affordance (out of scope here).
+    const masterPortEl = this.container.querySelector(".pb-master-port");
+    if (masterPortEl && this.ecm.masterOutputIds.size > 0) {
+      for (const id of this.ecm.masterOutputIds) {
+        const masterEffect = nodeById.get(id);
+        if (!masterEffect) continue;
         const fromEl = masterEffect.dom.querySelector('.pb-port-out[data-port-id="out"]');
-        if (fromEl) {
-          const a = this._portCenter(fromEl);
-          const b = this._portCenter(masterPortEl);
-          const d = this._wirePath(a, b);
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          path.setAttribute("class", "pb-master-wire");
-          path.setAttribute("fill", "none");
-          path.setAttribute("stroke", "#fc6");
-          path.setAttribute("stroke-width", "2");
-          path.setAttribute("marker-end", "url(#pb-arrow)");
-          path.setAttribute("d", d);
-          this._svg.appendChild(path);
-          // Clickable hit area for clearing the master.
-          const hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          hit.setAttribute("class", "pb-master-wire-hit");
-          hit.setAttribute("d", d);
-          hit.setAttribute("stroke-width", "16");
-          hit.setAttribute("fill", "none");
-          hit.setAttribute("pointer-events", "stroke");
-          hit._isMasterWire = true;
-          hit.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            try {
-              this.ecm.clearMasterOutput();
-            } catch (err) {
-              console.error("clearMasterOutput failed:", err);
-            }
-          });
-          this._svg.appendChild(hit);
-        }
+        if (!fromEl) continue;
+        const a = this._portCenter(fromEl);
+        const b = this._portCenter(masterPortEl);
+        const d = this._wirePath(a, b);
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("class", "pb-master-wire");
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "#fc6");
+        path.setAttribute("stroke-width", "2");
+        path.setAttribute("marker-end", "url(#pb-arrow)");
+        path.setAttribute("d", d);
+        this._svg.appendChild(path);
+        // Clickable hit area for removing THIS effect from the
+        // master set.
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        hit.setAttribute("class", "pb-master-wire-hit");
+        hit.setAttribute("d", d);
+        hit.setAttribute("stroke-width", "16");
+        hit.setAttribute("fill", "none");
+        hit.setAttribute("pointer-events", "stroke");
+        hit._isMasterWire = true;
+        hit._masterEffectId = id;
+        hit.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          try {
+            this.ecm.unsetMasterOutput(id);
+          } catch (err) {
+            console.error("unsetMasterOutput failed:", err);
+          }
+        });
+        this._svg.appendChild(hit);
       }
     }
   }

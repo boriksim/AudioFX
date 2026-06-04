@@ -48,12 +48,17 @@ export class PatchboardUI {
     this._resolveSourceActions = dom.resolveSourceActions ?? null;
     this._onAdd = dom.onAdd ?? ((id) => this.ecm.addEffect(id));
 
-    // Make the container a positioning context for the absolute cards.
-    if (getComputedStyle(this.container).position === "static") {
-      this.container.style.position = "relative";
-    }
+    // Make the container a positioning context for the absolute
+    // cards. Set position: relative unconditionally — the CSS
+    // already does the same via `.effects-container.patchboard`,
+    // but the inline style is the most reliable signal that the
+    // patchboard layout is active. (Some environments return
+    // empty/unknown from getComputedStyle; trusting that check
+    // caused a "cards positioned off-screen" bug in one case.)
+    this.container.style.position = "relative";
     this.container.classList.add("patchboard");
     this.container.style.minHeight = "480px";
+    this._installHeader();
 
     this._installSvgOverlay();
     this._installPicker();
@@ -75,6 +80,17 @@ export class PatchboardUI {
     this._installGlobalKeyHandlers();
 
     this._sync();
+  }
+
+  _installHeader() {
+    if (this.container.querySelector(".pb-header")) return;
+    const header = document.createElement("div");
+    header.className = "pb-header";
+    header.innerHTML = `
+      <span class="pb-title">Patchboard</span>
+      <span class="pb-hint">drag a card to move · drag a port to wire · click a wire to disconnect</span>
+    `;
+    this.container.appendChild(header);
   }
 
   _installSvgOverlay() {
@@ -186,8 +202,16 @@ export class PatchboardUI {
     if (card.dataset.pbWired) return;
     card.dataset.pbWired = "1";
 
-    // Position absolutely on the patchboard.
+    // Position absolutely on the patchboard. Set top/left
+    // explicitly to 0 so the `transform: translate(x, y)` in
+    // `_applyPositions` is the SOLE positioning signal. Without
+    // explicit top/left, browsers differ on where an absolute
+    // element with no offsets lands (some treat it as "static
+    // position in the flow", which is well-defined but easy to
+    // misread; we want a single source of truth).
     card.style.position = "absolute";
+    card.style.top = "0";
+    card.style.left = "0";
     card.style.zIndex = "1";
 
     // The card body is draggable. mousedown on the body starts a

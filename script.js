@@ -262,6 +262,23 @@ async function initAudio() {
     },
   });
 
+  // Scroll the patchboard into view so the user sees the effects
+  // rack right after pressing Start Audio. (The page is tall —
+  // visualizer + presets panel + patchboard — and the patchboard
+  // is the last element, so on shorter viewports it's below the
+  // fold.)
+  setTimeout(() => {
+    const el = document.getElementById("effects-container");
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, 50);
+
+  console.log("PatchboardUI ready:", {
+    cards: ecm.effectChain.length,
+    container: document.getElementById("effects-container"),
+  });
+
   const presetUI = new PresetManagerUI(ecm);
   presetUI.onStatus((msg, kind) => setStatus(msg, kind));
   // Route preset loads through the same apply() path as undo/redo so

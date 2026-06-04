@@ -67,18 +67,52 @@ canvas {
 
 /* Patchboard free-grid layout (Phase 4b). The container stops being a
    flex container and becomes a positioning context. Cards are
-   absolutely positioned by PatchboardUI via `transform: translate(x, y)`. */
+   absolutely positioned by PatchboardUI via `transform: translate(x, y)`.
+   `position: relative` is also set inline by JS as a defense in
+   depth, so the cards' absolute positioning has a stable containing
+   block even if some browser/layout mode swallows the CSS rule. */
 .effects-container.patchboard {
     display: block;
+    position: relative;
     background-color: #0a0a0a;
     background-image:
-        linear-gradient(0deg, rgba(255,255,255,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+        linear-gradient(0deg, rgba(255,255,255,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
     background-size: 20px 20px;
-    border: 1px solid #222;
+    border: 1px solid #2a2a2a;
     border-radius: 6px;
     overflow: auto;
     margin: 0 auto 24px;
+    padding: 16px;
+    min-height: 520px;
+}
+
+.effects-container.patchboard .pb-header {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1a1a1a;
+}
+
+.effects-container.patchboard .pb-header .pb-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #6cf;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.effects-container.patchboard .pb-header .pb-hint {
+    font-size: 11px;
+    color: #666;
+}
+
+.effects-container.patchboard .effect-instance {
+    box-sizing: border-box;
 }
 
 .effect-instance.selected {

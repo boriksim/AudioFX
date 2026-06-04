@@ -15,16 +15,19 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 253 passing across 23 test files.
+- **Last known good test count:** 260 passing across 23 test files.
   (Updated at the top of every commit.)
-- **Latest commit on `dev`:** `420fe0f` — `fix(channel-splitter): use
-  named export to match script.js import` (root cause of the empty
-  patchboard). Prior: `48b668b` `docs(status)`, `33f7a9b`
-  `fix(init): mic-optional`, `8074723` `fix(patchboard): hard-set
-  container position`, `0caf4c8` `fix(patchboard): distinct
-  default positions`, `61eaa57` `feat(phase-5)`,
-  `c330e7c` `feat(phase-4c)`, `c9de37b` `feat(phase-4b)`,
-  `2cdc142` `feat(phase-4a)`.
+- **Latest commit on `dev`:** `be40b4e` — `fix(patchboard): grow
+  container to fit all cards; SVG overflow visible`. Prior:
+  `25f17d2` `fix(patchboard): bigger wire hit area, click-to-delete
+  on all wires, drag tolerance`, `a30f3b6` `docs(status)`,
+  `420fe0f` `fix(channel-splitter): use named export` (root cause
+  of the empty patchboard), `48b668b` `docs(status)`,
+  `33f7a9b` `fix(init): mic-optional`, `8074723`
+  `fix(patchboard): hard-set container position`, `0caf4c8`
+  `fix(patchboard): distinct default positions`,
+  `61eaa57` `feat(phase-5)`, `c330e7c` `feat(phase-4c)`,
+  `c9de37b` `feat(phase-4b)`, `2cdc142` `feat(phase-4a)`.
 
 ---
 
@@ -206,6 +209,37 @@ proposed by the user.)
   still built (with `stream = null`). `wireNewMics` and
   `reattachMic` short-circuit on `!stream`. The user can
   explore the UI without mic and grant access later.
+- **Wire click-to-delete works for ALL wires.** Every wire is
+  rendered as a pair of SVG paths: a visible 2px cyan stroke
+  (`pointer-events: none`) and a wide invisible 16px hit area
+  (`pointer-events: stroke`) on top. Clicking the hit area:
+  - For an explicit connection (added via drag-to-wire):
+    `ecm.disconnect(from, to, opts)` removes the entry from
+    the explicit list.
+  - For a chain-order connection (the default wiring): a
+    `confirm()` prompt, then `ecm.removeEffect(c.to)` removes
+    the destination from the chain. The chain re-routes around
+    the gap because `rebuildAudioGraph` re-derives chain order
+    from the remaining array. The user can re-add the effect
+    via the picker, or undo with Ctrl+Z (history is wired up
+    via `ecm.onChange`).
+- **Drag-to-wire has a 10px tolerance.** `_portAt` first tries
+  the fast `document.elementsFromPoint` path; on miss (or when
+  the API is unavailable — jsdom doesn't ship it), it falls
+  back to a scan of every port of the requested role and
+  returns the closest one within 10px. A 14x14 port is now
+  effectively a ~30x30 drop target. `test/setup.js` polyfills
+  `document.elementsFromPoint` to return `[]` so the
+  production code's fast path doesn't throw in tests.
+- **Container grows to fit cards.** `_applyPositions`
+  computes the deepest card's y and sets the container's
+  `min-height` to that + ~260px. Adding a 5th effect (default
+  y=680) grows the container from 520px to ~780px; a 6th
+  grows it to ~960px, etc. The SVG gets `overflow: visible`
+  so wires that briefly extend past the container's nominal
+  bounds are still drawn. This was the "i can't connect
+  newly added nodes" bug: the new card was rendered but the
+  wire to it was clipped by the SVG's viewBox.
 
 ---
 
@@ -238,7 +272,7 @@ proposed by the user.)
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 253/253 baseline.
+6. `npx vitest run` — confirm 260/260 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.

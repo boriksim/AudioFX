@@ -116,9 +116,12 @@ export class PatchboardUI {
     // aligned with the cards' port-out dots. The cards are at
     // y=40 with a ~220px height, so the center is y=150. Using
     // a fixed top value keeps the master port stable as cards
-    // are added/removed.
+    // are added/removed. The port element is 30x30 with
+    // `right: 0` so it sits fully inside the container (the
+    // container has `overflow: auto` for scrollbars, so
+    // negative `right` would clip the port out of view).
     port.style.top = "150px";
-    port.style.right = "-15px";
+    port.style.right = "0px";
     port.style.transform = "translateY(-50%)";
     this.container.appendChild(port);
   }

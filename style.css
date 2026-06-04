@@ -332,7 +332,8 @@ canvas {
    and the user had to arrange cards in a specific way to get
    drag-to-wire to work. 30x30 makes the port effectively a
    ~30x30 drop target. */
-.effect-instance .pb-port {
+.effect-instance .pb-port,
+.pb-master-port {
     position: absolute;
     width: 30px;
     height: 30px;
@@ -345,7 +346,8 @@ canvas {
        30x30 box is the click target. */
 }
 
-.effect-instance .pb-port::after {
+.effect-instance .pb-port::after,
+.pb-master-port::after {
     content: "";
     position: absolute;
     top: 50%;
@@ -361,7 +363,8 @@ canvas {
     pointer-events: none;
 }
 
-.effect-instance .pb-port:hover::after {
+.effect-instance .pb-port:hover::after,
+.pb-master-port:hover::after {
     transform: translate(-50%, -50%) scale(1.3);
     box-shadow: 0 0 0 2px #6cf, 0 0 8px #6cf;
 }
@@ -387,12 +390,18 @@ canvas {
 /* Master output port (PatchboardUI): a single, container-level
    port on the right edge. Effects wire to it to reach the
    audio destination. Distinct color (orange) so the user can
-   see it at a glance. */
+   see it at a glance. Pinned to the right edge of the
+   container (NOT hanging off at right: -15px) so it stays
+   visible even though the container has `overflow: auto`. */
+.pb-master-port {
+    z-index: 3;
+}
 .pb-master-port::after {
     background: #fc6 !important;
     box-shadow: 0 0 0 1px #fc6, 0 0 8px #fc6 !important;
 }
 .pb-master-port:hover::after {
+    transform: translate(-50%, -50%) scale(1.4) !important;
     box-shadow: 0 0 0 2px #fc6, 0 0 12px #fc6 !important;
 }
 

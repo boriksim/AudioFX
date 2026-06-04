@@ -15,11 +15,14 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 273 passing across 23 test files.
+- **Last known good test count:** 306 passing across 24 test files.
   (Updated at the top of every commit.)
-- **Latest commit on `dev`:** `c98051a` — `feat(patchboard):
-  gain-based bypass, chain-order breaks, horizontal row layout`.
-  Prior: `be40b4e` `fix(patchboard): grow container`, `25f17d2`
+- **Latest commit on `dev`:** `b3d5556` — `feat(patchboard): master
+  output port, utility node, drag-on-wire-to-insert, larger port
+  hit area, remove ChannelSplitter from default`. Prior:
+  `294bfde` `docs(status)`, `c98051a` `feat(patchboard):
+  gain-based bypass, chain-order breaks, horizontal row layout`,
+  `be40b4e` `fix(patchboard): grow container`, `25f17d2`
   `fix(patchboard): bigger wire hit area`, `a30f3b6` `docs(status)`,
   `420fe0f` `fix(channel-splitter): use named export` (root cause
   of the empty patchboard), `48b668b` `docs(status)`,
@@ -120,6 +123,65 @@ then resume the next-steps section below.**
 on `dev`, plus the patchboard audio + chain-break + horizontal
 layout fixes. Future work beyond the original plan can be
 proposed by the user.)
+
+---
+
+## Post-Phase-5 patchboard features (commit `b3d5556`)
+
+The 11-section plan is complete; the user asked for these
+ergonomic improvements on top of the patchboard:
+
+- **Master output port.** A single static `.pb-master-port`
+  sits on the right edge of the patchboard container. Effects
+  wire to it to reach the audio destination; if nothing is
+  connected, no audio reaches destination (silence). Manager
+  API: new option `useMasterOutput` (default false, preserves
+  legacy auto-connect-sinks-to-destination behavior for tests);
+  new properties `useMasterOutput` and `masterOutputId`; new
+  methods `setMasterOutput(effectId)`, `clearMasterOutput()`,
+  `getMasterOutput()`. `PatchboardUI` sets
+  `ecm.useMasterOutput = true` in its constructor, so the
+  manager requires an explicit master. Drag a wire from any
+  effect's output to the master port → `setMasterOutput(fromId)`
+  and an orange master wire is drawn. Click the master wire →
+  `clearMasterOutput()`. `removeEffect(id)` clears
+  `masterOutputId` if the removed node was the master.
+- **Drag-on-wire-to-insert.** Drop a card on top of an
+  existing wire and it splices itself in between, deleting
+  the original wire. `_findWireNear(x, y)` samples 16 points
+  along each wire's cubic Bezier and returns the closest
+  within 30px; `_insertIntoWire(effectObj, wire)` calls
+  `ecm.moveEffect(cardId, fromIdx+1)` (chain becomes
+  `from → NEW → to`); for explicit wires, also `disconnect`
+  to remove the duplicate path.
+- **Larger port hit area.** `.pb-port` is a 30x30 transparent
+  element; the visible 14x14 dot is a `::after` pseudo
+  centered inside. The 30x30 area is the click target for
+  both mousedown (start wire) and mouseup (drop wire). Port
+  positions are at `left: -15px` (in) and `right: -15px`
+  (out) so the click area extends beyond the card edge.
+- **Utility node.** `effects/UtilityEffect.js`, id `utility`,
+  1 in / 1 out. Four parameters: gain (0..2, default 1),
+  pan (-1..+1, default 0), invertPhase (boolean, default
+  false), mono (boolean, default false). True mono downmix
+  via a 2x2 gain matrix: identity in stereo (`[1,0,0,1]`),
+  uniform 0.5 in mono (`[0.5,0.5,0.5,0.5]` → (L+R)/2 on
+  BOTH output channels). Audio path: input → splitter(2) →
+  2x2 gain matrix → merger(2) → phaseInvert → panner
+  (StereoPannerNode) → outputGain → output. All matrix
+  gains always wired; no `disconnect` calls.
+- **ChannelSplitter removed from default picker.** The user
+  didn't ask for it and the broken `getConfigSchema()` (was
+  array, now fixed to object) made it render as an empty
+  black box. Removed from `buildRegistry()` in `script.js`;
+  the class is still in the code and importable for
+  explicit use. Picker test updated to match.
+- **Test polyfill extended.** `test/setup.js` adds
+  `createStereoPanner()` and a `pan` audio param so
+  `UtilityEffect` can be instantiated in tests.
+- **Test count:** 306 passing across 24 files (was 273).
+  33 new tests cover master output, utility node, and
+  drag-on-wire-to-insert.
 
 ---
 
@@ -269,6 +331,43 @@ proposed by the user.)
   rendered but the wire to it was clipped by the SVG's
   viewBox.
 
+- **Master output is opt-in.** `EffectChainManager` keeps
+  the legacy behavior (auto-connect sinks to
+  `audioContext.destination`) by default, because the
+  existing tests rely on it. The new opt-in flag
+  `useMasterOutput: true` switches the manager to the
+  explicit-master model: ONLY the effect whose id matches
+  `masterOutputId` is wired to `audioContext.destination`;
+  no master → no audio. `PatchboardUI` sets this flag in
+  its constructor, so the production app is in master
+  mode and tests are in legacy mode. The master port is a
+  static UI element on the right edge of the container,
+  NOT a chain element — it is a visual proxy for the
+  manager's `masterOutputId`. The master wire is drawn
+  orange to distinguish it from regular effect wires.
+  Clicking the master wire is the same gesture as clicking
+  a regular wire: a single, immediate action with no
+  confirm.
+
+- **Drag-on-wire-to-insert never modifies explicit
+  connections authoritatively.** The card is repositioned
+  in the chain array (via `ecm.moveEffect(id, idx+1)`),
+  which re-derives chain order. If the wire being replaced
+  was an EXPLICIT connection, the `ecm.disconnect` is
+  called explicitly so there's no parallel-path
+  duplication. The user keeps both effects, the chain
+  order, and the connection graph consistent.
+
+- **Utility node ("Utility" in the picker) is a utility,
+  not an effect.** It performs level, pan, phase-invert,
+  and mono downmix on the signal but adds no character of
+  its own. The 2x2 gain matrix is a deliberate design
+  choice for true mono (not "play one channel"): stereo
+  passes through (identity matrix), mono sums both
+  channels uniformly into both outputs. The matrix is
+  always wired; "mono" only changes gain values. This
+  matches the spec for a real-world utility bus.
+
 ---
 
 ## Conventions
@@ -300,7 +399,7 @@ proposed by the user.)
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 273/273 baseline.
+6. `npx vitest run` — confirm 306/306 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.

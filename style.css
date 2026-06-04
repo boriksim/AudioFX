@@ -324,19 +324,89 @@ canvas {
   flex: 1 1 100%;
 }
 
-/* Patchboard port dots and wires (Phase 4b). Ports are absolutely
-   positioned on the card's left/right edges. */
+/* Patchboard port dots and wires (Phase 4b). The .pb-port is the
+   click target (30x30 invisible area for forgiving mouse
+   targeting); the visible 14x14 dot is a pseudo-element
+   ::after centered inside. The previous 14x14 hit area was
+   frustrating to use — ports were too small to click reliably,
+   and the user had to arrange cards in a specific way to get
+   drag-to-wire to work. 30x30 makes the port effectively a
+   ~30x30 drop target. */
 .effect-instance .pb-port {
     position: absolute;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: transparent;
+    cursor: crosshair;
+    z-index: 2;
+    /* The port itself has no border/background — only the ::after
+       pseudo (the visible 14x14 dot) is rendered. The port's
+       30x30 box is the click target. */
+}
+
+.effect-instance .pb-port::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     width: 14px;
     height: 14px;
     border-radius: 50%;
     background: #6cf;
     border: 2px solid #0a0a0a;
     box-shadow: 0 0 0 1px #6cf;
-    cursor: crosshair;
-    z-index: 2;
     transition: transform 0.1s, box-shadow 0.1s, background 0.1s;
+    pointer-events: none;
+}
+
+.effect-instance .pb-port:hover::after {
+    transform: translate(-50%, -50%) scale(1.3);
+    box-shadow: 0 0 0 2px #6cf, 0 0 8px #6cf;
+}
+
+.effect-instance .pb-port-in {
+    top: 50%;
+    left: -15px;
+    transform: translateY(-50%);
+}
+
+.effect-instance .pb-port-out {
+    top: 50%;
+    right: -15px;
+    transform: translateY(-50%);
+}
+
+.effect-instance .pb-port.pb-port-drop-target::after {
+    background: #fc6;
+    box-shadow: 0 0 0 2px #fc6, 0 0 10px #fc6;
+    transform: translate(-50%, -50%) scale(1.4);
+}
+
+/* Master output port (PatchboardUI): a single, container-level
+   port on the right edge. Effects wire to it to reach the
+   audio destination. Distinct color (orange) so the user can
+   see it at a glance. */
+.pb-master-port::after {
+    background: #fc6 !important;
+    box-shadow: 0 0 0 1px #fc6, 0 0 8px #fc6 !important;
+}
+.pb-master-port:hover::after {
+    box-shadow: 0 0 0 2px #fc6, 0 0 12px #fc6 !important;
+}
+
+/* Master wire (effect -> master port) is drawn in orange to
+   distinguish it from normal patch wires. */
+.pb-master-wire {
+    stroke: #fc6;
+}
+.pb-master-wire-hit {
+    stroke: transparent;
+    stroke-width: 16;
+    fill: none;
+    pointer-events: stroke;
+    cursor: pointer;
 }
 
 .effect-instance .pb-port:hover {

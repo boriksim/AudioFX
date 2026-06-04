@@ -4,7 +4,7 @@ import { InputMic } from "./effects/InputMic.js";
 import { DistortionEffect } from "./effects/DistortionEffect.js";
 import { LowpassEffect } from "./effects/LowpassEffect.js";
 import { DelayEffect } from "./effects/DelayEffect.js";
-import { ChannelSplitter } from "./effects/ChannelSplitter.js";
+import { UtilityEffect } from "./effects/UtilityEffect.js";
 import { AnalyserBus } from "./engine/AnalyserBus.js";
 import { Profiler } from "./engine/Profiler.js";
 import { SpectrumBars } from "./visualization/renderers/SpectrumBars.js";
@@ -51,10 +51,10 @@ function buildRegistry() {
     .register(InputMic)
     .register(InputFile)
     .register(InputOscillator)
-    .register(ChannelSplitter)
     .register(DistortionEffect)
     .register(LowpassEffect)
-    .register(DelayEffect);
+    .register(DelayEffect)
+    .register(UtilityEffect);
 }
 
 /**

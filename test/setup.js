@@ -103,6 +103,7 @@ function makeNodeFactory(type) {
       this.frequency = new MockAudioParam(350);
       this.Q = new MockAudioParam(1);
       this.delayTime = new MockAudioParam(0);
+      this.pan = new MockAudioParam(0);
     }
   };
 }
@@ -149,6 +150,7 @@ class MockAudioContext {
   createConvolver() { return this._create("ConvolverNode"); }
   createChannelSplitter(n) { return this._create("ChannelSplitterNode", n); }
   createChannelMerger(n) { return this._create("ChannelMergerNode", n); }
+  createStereoPanner() { return this._create("StereoPannerNode"); }
   createDynamicsCompressor() { return this._create("DynamicsCompressorNode"); }
   createAnalyser() { return new MockAnalyserNode(this); }
   createOscillator() { return new MockOscillatorNode(this); }

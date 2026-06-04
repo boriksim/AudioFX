@@ -85,10 +85,24 @@ export class ChannelSplitter extends AbstractAudioNode {
   }
 
   getConfigSchema() {
-    return [
-      { type: "range", id: "gainL", label: "L gain", min: 0, max: 2, step: 0.01, value: this.gainL.gain.value },
-      { type: "range", id: "gainR", label: "R gain", min: 0, max: 2, step: 0.01, value: this.gainR.gain.value },
-    ];
+    return {
+      gainL: {
+        type: "range",
+        min: 0,
+        max: 2,
+        step: 0.01,
+        value: this.gainL.gain.value,
+        label: "L gain",
+      },
+      gainR: {
+        type: "range",
+        min: 0,
+        max: 2,
+        step: 0.01,
+        value: this.gainR.gain.value,
+        label: "R gain",
+      },
+    };
   }
 
   applyConfig(params) {

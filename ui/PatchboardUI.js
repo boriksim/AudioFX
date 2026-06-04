@@ -48,6 +48,15 @@ export class PatchboardUI {
     this._resolveSourceActions = dom.resolveSourceActions ?? null;
     this._onAdd = dom.onAdd ?? ((id) => this.ecm.addEffect(id));
 
+    // The patchboard is the source of truth for the "master
+    // output" concept: a single port on the right edge that
+    // effects wire to in order to reach the audio destination.
+    // If nothing is connected there, no audio reaches the
+    // destination. We enable the manager's `useMasterOutput`
+    // mode so it requires an explicit master and stops the
+    // legacy auto-connect-sinks-to-destination behavior.
+    ecm.useMasterOutput = true;
+
     // Make the container a positioning context for the absolute
     // cards. Set position: relative unconditionally — the CSS
     // already does the same via `.effects-container.patchboard`,
@@ -61,6 +70,7 @@ export class PatchboardUI {
     this._installHeader();
 
     this._installSvgOverlay();
+    this._installMasterPort();
     this._installPicker();
 
     // Selection state.
@@ -88,9 +98,29 @@ export class PatchboardUI {
     header.className = "pb-header";
     header.innerHTML = `
       <span class="pb-title">Patchboard</span>
-      <span class="pb-hint">drag a card to move · drag a port to wire · click any wire to disconnect</span>
+      <span class="pb-hint">drag a card to move · drag a port to wire · click any wire to disconnect · drop a card on a wire to insert it</span>
     `;
     this.container.appendChild(header);
+  }
+
+  _installMasterPort() {
+    if (this.container.querySelector(".pb-master-port")) return;
+    const port = document.createElement("div");
+    port.className = "pb-port pb-port-in pb-master-port";
+    port.dataset.effectId = "__master__";
+    port.dataset.portId = "in";
+    port.dataset.portRole = "in";
+    port.dataset.masterPort = "1";
+    port.title = "Master Output — wire any effect here to hear it";
+    // Position on the right edge of the container, vertically
+    // aligned with the cards' port-out dots. The cards are at
+    // y=40 with a ~220px height, so the center is y=150. Using
+    // a fixed top value keeps the master port stable as cards
+    // are added/removed.
+    port.style.top = "150px";
+    port.style.right = "-15px";
+    port.style.transform = "translateY(-50%)";
+    this.container.appendChild(port);
   }
 
   _installSvgOverlay() {
@@ -324,7 +354,7 @@ export class PatchboardUI {
     ports.forEach((port, i) => {
       const dot = document.createElement("div");
       dot.className = `pb-port ${isInput ? "pb-port-in" : "pb-port-out"}`;
-      dot.dataset.portRole = isInput ? "input" : "output";
+      dot.dataset.portRole = isInput ? "in" : "out";
       dot.dataset.effectId = effectObj.id;
       dot.dataset.portId = port.id;
       dot.title = port.id;
@@ -397,13 +427,123 @@ export class PatchboardUI {
       card.style.transform = `translate(${effectObj.position.x}px, ${effectObj.position.y}px)`;
       this._redrawWires();
     };
-    const onUp = () => {
+    const onUp = (ev) => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      // Drag-on-wire-to-insert: if the user released the card
+      // near an existing wire, insert the card into the chain
+      // between the wire's endpoints. The original wire is
+      // replaced by two new wires (one on each side of the
+      // inserted card). This is the "drop a node on top of the
+      // wire" interaction: splice it in, delete the old wire.
+      const targetWire = this._findWireNear(ev.clientX, ev.clientY);
+      if (targetWire) {
+        this._insertIntoWire(effectObj, targetWire);
+      }
       this.ecm.onChange?.();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
+  }
+
+  /**
+   * Find the wire (chain-order or explicit) closest to the
+   * pointer, within a ~30px tolerance. Returns the wire's
+   * connection object {from, to, fromPort, toPort} or null.
+   * The wire's geometry is approximated from the port centers
+   * using the same Bezier as the visual wire; we sample points
+   * along the Bezier and return the closest.
+   */
+  _findWireNear(clientX, clientY) {
+    const TOLERANCE = 30;
+    const nodeById = new Map();
+    for (const e of this.ecm.effectChain) nodeById.set(e.id, e);
+    const candidates = [];
+    for (let i = 0; i < this.ecm.effectChain.length - 1; i++) {
+      const c = this.ecm._chainOrderConnection(i);
+      if (c && !this.ecm.isChainBroken(c.from, c.to)) candidates.push(c);
+    }
+    for (const c of this.ecm.connections) candidates.push(c);
+    let best = null;
+    let bestDist = TOLERANCE;
+    const containerRect = this.container.getBoundingClientRect();
+    for (const c of candidates) {
+      const fromNode = nodeById.get(c.from);
+      const toNode = nodeById.get(c.to);
+      if (!fromNode || !toNode) continue;
+      const fromEl = fromNode.dom.querySelector(`.pb-port-out[data-port-id="${c.fromPort}"]`);
+      const toEl = toNode.dom.querySelector(`.pb-port-in[data-port-id="${c.toPort}"]`);
+      if (!fromEl || !toEl) continue;
+      const a = this._portCenter(fromEl);
+      const b = this._portCenter(toEl);
+      // Sample 16 points along the cubic Bezier and return the
+      // closest one to the pointer.
+      const d = this._distanceAlongWire(a, b, clientX - containerRect.left, clientY - containerRect.top);
+      if (d < bestDist) {
+        best = c;
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Approximate the distance from a point to a cubic Bezier
+   * path by sampling. Cheaper than the analytic formula and
+   * accurate enough for a 30px tolerance check.
+   */
+  _distanceAlongWire(a, b, px, py) {
+    const dx = Math.max(40, Math.abs(b.x - a.x) * 0.5);
+    const c1x = a.x + dx, c1y = a.y;
+    const c2x = b.x - dx, c2y = b.y;
+    let best = Infinity;
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16;
+      const u = 1 - t;
+      const x = u*u*u*a.x + 3*u*u*t*c1x + 3*u*t*t*c2x + t*t*t*b.x;
+      const y = u*u*u*a.y + 3*u*u*t*c1y + 3*u*t*t*c2y + t*t*t*b.y;
+      const d = Math.hypot(x - px, y - py);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  /**
+   * Splice `effectObj` into the chain between the source and
+   * destination of the given wire. The wire itself is removed
+   * (its slot is replaced by two chain-order wires: source →
+   * effectObj → destination). Both effects stay in the chain;
+   * the inserted card is moved to the position right after
+   * `wire.from` so the new chain order flows correctly.
+   */
+  _insertIntoWire(effectObj, wire) {
+    const fromIdx = this.ecm.effectChain.findIndex((e) => e.id === wire.from);
+    const toIdx = this.ecm.effectChain.findIndex((e) => e.id === wire.to);
+    if (fromIdx < 0 || toIdx < 0) return;
+    // Move the inserted card to the position right after the
+    // wire's source. The chain becomes [..., from, NEW, ..., to, ...].
+    // The new card is "between" from and to in the audio flow.
+    const newIdx = fromIdx + 1;
+    const currentIdx = this.ecm.effectChain.findIndex((e) => e.id === effectObj.id);
+    if (currentIdx === -1) return;
+    if (currentIdx !== newIdx) this.ecm.moveEffect(effectObj.id, newIdx);
+    // If the wire was an explicit connection, disconnect it.
+    // The chain order will now route through the inserted card,
+    // so the explicit edge would create a duplicate path.
+    const isExplicit = this.ecm.connections.some(
+      (x) => x.from === wire.from && x.to === wire.to && x.fromPort === wire.fromPort && x.toPort === wire.toPort
+    );
+    if (isExplicit) {
+      try {
+        this.ecm.disconnect(wire.from, wire.to, { fromPort: wire.fromPort, toPort: wire.toPort });
+      } catch (err) {
+        console.error("disconnect (insert) failed:", err);
+      }
+    }
+    // For chain-order wires, no explicit disconnect is needed:
+    // the chain array has been rearranged so the new chain order
+    // is from → NEW → ... → to. The old chain-order wire is
+    // automatically replaced.
   }
 
   // ------- Drag-to-wire -------
@@ -443,13 +583,25 @@ export class PatchboardUI {
       this._clearHighlights();
       const drop = this._portAt(ev.clientX, ev.clientY, "in");
       if (drop && drop.dataset.effectId !== fromId) {
-        try {
-          this.ecm.connect(fromId, drop.dataset.effectId, {
-            fromPort,
-            toPort: drop.dataset.portId,
-          });
-        } catch (err) {
-          console.error("connect failed:", err);
+        if (drop.dataset.masterPort === "1") {
+          // Drop on the master port: set the source effect as
+          // the master output. The wire from the effect to the
+          // master port is drawn by _redrawWires on the next
+          // sync (triggered by setMasterOutput -> onChange).
+          try {
+            this.ecm.setMasterOutput(fromId);
+          } catch (err) {
+            console.error("setMasterOutput failed:", err);
+          }
+        } else {
+          try {
+            this.ecm.connect(fromId, drop.dataset.effectId, {
+              fromPort,
+              toPort: drop.dataset.portId,
+            });
+          } catch (err) {
+            console.error("connect failed:", err);
+          }
         }
       }
     };
@@ -635,6 +787,48 @@ export class PatchboardUI {
         }
       });
       this._svg.appendChild(hit);
+    }
+
+    // Master wire: drawn from the master effect's output port to
+    // the master port. Orange (#fc6) to distinguish it from the
+    // cyan patch wires. Clicking the master wire's hit area
+    // clears the master output (no audio reaches destination).
+    if (this.ecm.masterOutputId) {
+      const masterEffect = nodeById.get(this.ecm.masterOutputId);
+      const masterPortEl = this.container.querySelector(".pb-master-port");
+      if (masterEffect && masterPortEl) {
+        const fromEl = masterEffect.dom.querySelector('.pb-port-out[data-port-id="out"]');
+        if (fromEl) {
+          const a = this._portCenter(fromEl);
+          const b = this._portCenter(masterPortEl);
+          const d = this._wirePath(a, b);
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("class", "pb-master-wire");
+          path.setAttribute("fill", "none");
+          path.setAttribute("stroke", "#fc6");
+          path.setAttribute("stroke-width", "2");
+          path.setAttribute("marker-end", "url(#pb-arrow)");
+          path.setAttribute("d", d);
+          this._svg.appendChild(path);
+          // Clickable hit area for clearing the master.
+          const hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          hit.setAttribute("class", "pb-master-wire-hit");
+          hit.setAttribute("d", d);
+          hit.setAttribute("stroke-width", "16");
+          hit.setAttribute("fill", "none");
+          hit.setAttribute("pointer-events", "stroke");
+          hit._isMasterWire = true;
+          hit.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            try {
+              this.ecm.clearMasterOutput();
+            } catch (err) {
+              console.error("clearMasterOutput failed:", err);
+            }
+          });
+          this._svg.appendChild(hit);
+        }
+      }
     }
   }
 

@@ -42,9 +42,9 @@ describe("ChannelSplitter", () => {
 
   it("exposes a config schema for both gains", () => {
     const schema = splitter.getConfigSchema();
-    const ids = schema.map((s) => s.id);
-    expect(ids).toContain("gainL");
-    expect(ids).toContain("gainR");
+    expect(Object.keys(schema)).toEqual(expect.arrayContaining(["gainL", "gainR"]));
+    expect(schema.gainL.type).toBe("range");
+    expect(schema.gainR.type).toBe("range");
   });
 
   it("getConfig() returns both gains at their current values", () => {

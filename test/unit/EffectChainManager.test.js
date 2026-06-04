@@ -482,6 +482,89 @@ describe("EffectChainManager", () => {
       expect(manager.getChainBreaks()).toEqual([]);
     });
   });
+
+  describe("master output", () => {
+    function setupWithMaster() {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      const c = makeMockEffect("C");
+      manager.effectChain.push(a, b, c);
+      manager.useMasterOutput = true;
+      return { a, b, c };
+    }
+
+    it("with useMasterOutput=false (default), sinks auto-connect to destination", () => {
+      const a = makeMockEffect("A");
+      manager.effectChain.push(a);
+      // Legacy behavior: sink -> destination.
+      a.audioNode.output.connect.mockClear();
+      manager.rebuildAudioGraph();
+      expect(a.audioNode.output.connect).toHaveBeenCalledWith(ctx.destination);
+    });
+
+    it("with useMasterOutput=true and no master set, no node reaches destination", () => {
+      const a = makeMockEffect("A");
+      const b = makeMockEffect("B");
+      manager.effectChain.push(a, b);
+      manager.useMasterOutput = true;
+      manager.masterOutputId = null;
+      a.audioNode.output.connect.mockClear();
+      b.audioNode.output.connect.mockClear();
+      manager.rebuildAudioGraph();
+      // a->b is wired (chain order), but neither a nor b reaches destination.
+      expect(a.audioNode.output.connect).toHaveBeenCalledWith(b.audioNode.input);
+      expect(b.audioNode.output.connect).not.toHaveBeenCalledWith(ctx.destination);
+      expect(a.audioNode.output.connect).not.toHaveBeenCalledWith(ctx.destination);
+    });
+
+    it("setMasterOutput() routes the chosen effect to destination", () => {
+      const { a, b, c } = setupWithMaster();
+      expect(manager.setMasterOutput(b.id)).toBe(true);
+      expect(manager.getMasterOutput()).toBe(b.id);
+      b.audioNode.output.connect.mockClear();
+      c.audioNode.output.connect.mockClear();
+      manager.rebuildAudioGraph();
+      // b is the master: b.output -> destination.
+      expect(b.audioNode.output.connect).toHaveBeenCalledWith(ctx.destination);
+      // c is no longer the sink (b took that role).
+      expect(c.audioNode.output.connect).not.toHaveBeenCalledWith(ctx.destination);
+    });
+
+    it("setMasterOutput() returns false for the same id twice", () => {
+      const { b } = setupWithMaster();
+      expect(manager.setMasterOutput(b.id)).toBe(true);
+      expect(manager.setMasterOutput(b.id)).toBe(false);
+    });
+
+    it("setMasterOutput() throws for unknown effect ids", () => {
+      setupWithMaster();
+      expect(() => manager.setMasterOutput("nonexistent")).toThrow(/unknown effect/);
+    });
+
+    it("clearMasterOutput() drops the connection to destination", () => {
+      const { b } = setupWithMaster();
+      manager.setMasterOutput(b.id);
+      expect(manager.clearMasterOutput()).toBe(true);
+      expect(manager.getMasterOutput()).toBe(null);
+      b.audioNode.output.connect.mockClear();
+      manager.rebuildAudioGraph();
+      // No node reaches destination.
+      expect(b.audioNode.output.connect).not.toHaveBeenCalledWith(ctx.destination);
+    });
+
+    it("clearMasterOutput() returns false when there's no master", () => {
+      setupWithMaster();
+      expect(manager.clearMasterOutput()).toBe(false);
+    });
+
+    it("removeEffect() clears masterOutputId if the removed node was the master", () => {
+      const { a, b, c } = setupWithMaster();
+      manager.setMasterOutput(b.id);
+      manager.removeEffect(b.id);
+      // Master is cleared automatically; no stale id.
+      expect(manager.getMasterOutput()).toBe(null);
+    });
+  });
   describe("getLatency() (Phase 1.5)", () => {
     it("returns baseLatency, outputLatency, and a sum total", () => {
       const result = manager.getLatency();

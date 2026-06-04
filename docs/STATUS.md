@@ -15,12 +15,12 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 260 passing across 23 test files.
+- **Last known good test count:** 273 passing across 23 test files.
   (Updated at the top of every commit.)
-- **Latest commit on `dev`:** `be40b4e` — `fix(patchboard): grow
-  container to fit all cards; SVG overflow visible`. Prior:
-  `25f17d2` `fix(patchboard): bigger wire hit area, click-to-delete
-  on all wires, drag tolerance`, `a30f3b6` `docs(status)`,
+- **Latest commit on `dev`:** `c98051a` — `feat(patchboard):
+  gain-based bypass, chain-order breaks, horizontal row layout`.
+  Prior: `be40b4e` `fix(patchboard): grow container`, `25f17d2`
+  `fix(patchboard): bigger wire hit area`, `a30f3b6` `docs(status)`,
   `420fe0f` `fix(channel-splitter): use named export` (root cause
   of the empty patchboard), `48b668b` `docs(status)`,
   `33f7a9b` `fix(init): mic-optional`, `8074723`
@@ -36,9 +36,8 @@ then resume the next-steps section below.**
 - **Phase 1 — Stabilization:** LowpassEffect fixes, "rebult" typo,
   container selector, unified bypass, initUI guards, README rewrite.
 - **Phase 1.5 — Latency:** `latencyHint: 'interactive'`,
-  `channelCount: 1`, WaveShaper `oversample: "2x"`, hard-bypass
-  disconnects `effectOutput → wetGain`, `getLatency()` returns
-  `{baseLatency, outputLatency, total}`.
+  `channelCount: 1`, WaveShaper `oversample: "2x"`, `getLatency()`
+  returns `{baseLatency, outputLatency, total}`.
 - **Phase 2a — Plugin system:** `core/BaseEffect.js`,
   `core/PluginRegistry.js` (loadFromModule + instantiate + URL
   memoization), all 4 base effects declare `static manifest`, manager
@@ -118,7 +117,8 @@ then resume the next-steps section below.**
 ## Open / upcoming work
 
 (none — all phases 1-5 of `docs/ARCHITECTURE.md` are complete
-on `dev`. Future work beyond the original plan can be
+on `dev`, plus the patchboard audio + chain-break + horizontal
+layout fixes. Future work beyond the original plan can be
 proposed by the user.)
 
 ---
@@ -126,9 +126,11 @@ proposed by the user.)
 ## Key architectural decisions (do not reverse without user input)
 
 - **Latency first.** Keep `latencyHint: 'interactive'`,
-  `channelCount: 1`, hard-bypass disconnects the wet path. No
-  filter nodes in the default chain (Biquad is added by user, not
-  always-on).
+  `channelCount: 1`. No filter nodes in the default chain
+  (Biquad is added by user, not always-on). Bypass is
+  gain-based (see the **Bypass** decision below) — the wet
+  path is always wired, and bypass just sets the dry/wet
+  gain values.
 - **Native ESM, no build step.** All imports are explicit paths;
   `script.js` is loaded via `<script type="module">`. Do not
   introduce a bundler.
@@ -209,20 +211,43 @@ proposed by the user.)
   still built (with `stream = null`). `wireNewMics` and
   `reattachMic` short-circuit on `!stream`. The user can
   explore the UI without mic and grant access later.
-- **Wire click-to-delete works for ALL wires.** Every wire is
-  rendered as a pair of SVG paths: a visible 2px cyan stroke
-  (`pointer-events: none`) and a wide invisible 16px hit area
-  (`pointer-events: stroke`) on top. Clicking the hit area:
+- **Bypass is gain-based, not disconnect-based.** The dry path
+  (`input → dryGain → output`) and the wet path
+  (`input → [DSP] → effectOutput → wetGain → output`) are
+  BOTH wired at all times. Bypass just sets the gains:
+  bypassed → `dryGain=1, wetGain=0`; active → `dryGain=1-mix,
+  wetGain=mix`. This trades a small CPU cost (the DSP runs
+  even in bypass) for a huge reliability win — the previous
+  design called `effectOutput.disconnect(specificDest)` on
+  bypass, which is not perfectly consistent across browsers
+  and was the cause of "I can hear the source alone but not
+  through any effect" reports. All effects (Distortion,
+  Lowpass, Delay) now default to ACTIVE (`bypass=false`).
+- **Wire click breaks the wire, never removes the effect.**
+  Every wire is rendered as a pair of SVG paths: a visible
+  2px cyan stroke (`pointer-events: none`) and a wide
+  invisible 16px hit area (`pointer-events: stroke`) on top.
+  Clicking the hit area:
   - For an explicit connection (added via drag-to-wire):
     `ecm.disconnect(from, to, opts)` removes the entry from
-    the explicit list.
-  - For a chain-order connection (the default wiring): a
-    `confirm()` prompt, then `ecm.removeEffect(c.to)` removes
-    the destination from the chain. The chain re-routes around
-    the gap because `rebuildAudioGraph` re-derives chain order
-    from the remaining array. The user can re-add the effect
-    via the picker, or undo with Ctrl+Z (history is wired up
-    via `ecm.onChange`).
+    the explicit list. The wire disappears.
+  - For a chain-order connection (the default wiring):
+    `ecm.breakChain(c.from, c.to)` marks the pair as broken
+    (`chainBreaks: Set<"fromId|toId">`). `rebuildAudioGraph`
+    skips the pair (no audio path), PatchboardUI stops
+    drawing the wire, and BOTH effects stay in the chain.
+    The user can re-connect by dragging a new wire between
+    the two ports (the `connect()` call re-wires the pair
+    explicitly; the dedup against chain order is suspended
+    when the pair is broken). There is NO `confirm()` prompt
+    — clicking a wire is a single, immediate action.
+- **Chain-order breaks are persisted.** `serializeProject`
+  writes the manager's `getChainBreaks()` to a top-level
+  `breaks: string[]` field. `deserializeProject` re-applies
+  them after the explicit connections. No format version
+  bump (the field is additive and optional; v1/v2 projects
+  with no `breaks` field load fine). `removeEffect` cleans
+  up any break whose key references the removed node id.
 - **Drag-to-wire has a 10px tolerance.** `_portAt` first tries
   the fast `document.elementsFromPoint` path; on miss (or when
   the API is unavailable — jsdom doesn't ship it), it falls
@@ -231,15 +256,18 @@ proposed by the user.)
   effectively a ~30x30 drop target. `test/setup.js` polyfills
   `document.elementsFromPoint` to return `[]` so the
   production code's fast path doesn't throw in tests.
-- **Container grows to fit cards.** `_applyPositions`
-  computes the deepest card's y and sets the container's
-  `min-height` to that + ~260px. Adding a 5th effect (default
-  y=680) grows the container from 520px to ~780px; a 6th
-  grows it to ~960px, etc. The SVG gets `overflow: visible`
-  so wires that briefly extend past the container's nominal
-  bounds are still drawn. This was the "i can't connect
-  newly added nodes" bug: the new card was rendered but the
-  wire to it was clipped by the SVG's viewBox.
+- **Container grows to fit cards in BOTH dimensions.**
+  `_applyPositions` computes the deepest card's y and the
+  rightmost card's x, and sets the container's `min-height`
+  to that + ~260px and `min-width` to that + ~300px. The
+  default layout is a horizontal row (cards at y=40, x=40 +
+  index*280), so overflow is normally horizontal; the height
+  growth handles dragged-down cards. The SVG gets
+  `overflow: visible` so wires that briefly extend past the
+  container's nominal bounds are still drawn. This was the
+  "i can't connect newly added nodes" bug: the new card was
+  rendered but the wire to it was clipped by the SVG's
+  viewBox.
 
 ---
 
@@ -272,7 +300,7 @@ proposed by the user.)
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 260/260 baseline.
+6. `npx vitest run` — confirm 273/273 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.

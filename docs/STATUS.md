@@ -15,11 +15,14 @@ then resume the next-steps section below.**
 - **Test framework:** Vitest 2.1.9 + jsdom + Web Audio polyfill in
   `test/setup.js`.
 - **Stack:** native ESM, no build step.
-- **Last known good test count:** 306 passing across 24 test files.
+- **Last known good test count:** 314 passing across 24 test files.
   (Updated at the top of every commit.)
-- **Latest commit on `dev`:** `b3d5556` — `feat(patchboard): master
-  output port, utility node, drag-on-wire-to-insert, larger port
-  hit area, remove ChannelSplitter from default`. Prior:
+- **Latest commit on `dev`:** `b3103be` — `fix(patchboard):
+  explicit-only patch-cable model; no auto-wiring`. Prior:
+  `a84b843` `fix(patchboard): master port visible on container
+  right edge`, `e56688b` `docs(status)`, `b3d5556` `feat(patchboard):
+  master output port, utility node, drag-on-wire-to-insert, larger
+  port hit area, remove ChannelSplitter from default`,
   `294bfde` `docs(status)`, `c98051a` `feat(patchboard):
   gain-based bypass, chain-order breaks, horizontal row layout`,
   `be40b4e` `fix(patchboard): grow container`, `25f17d2`
@@ -126,7 +129,7 @@ proposed by the user.)
 
 ---
 
-## Post-Phase-5 patchboard features (commit `b3d5556`)
+## Post-Phase-5 patchboard features (commits `b3d5556`, `a84b843`, `b3103be`)
 
 The 11-section plan is complete; the user asked for these
 ergonomic improvements on top of the patchboard:
@@ -179,9 +182,53 @@ ergonomic improvements on top of the patchboard:
 - **Test polyfill extended.** `test/setup.js` adds
   `createStereoPanner()` and a `pan` audio param so
   `UtilityEffect` can be instantiated in tests.
-- **Test count:** 306 passing across 24 files (was 273).
-  33 new tests cover master output, utility node, and
-  drag-on-wire-to-insert.
+- **Master port is visible on the container right edge.**
+  Commit `a84b843` fixed three bugs that prevented the master
+  port from showing up: (1) the `.pb-port` CSS was scoped to
+  `.effect-instance .pb-port`, so the container-level master
+  port got no width/height/positioning; (2) the container has
+  `overflow: auto`, so a port at `right: -15px` was clipped;
+  (3) the master port had no `position: absolute`. Now pinned
+  to `right: 0` (fully inside) with the orange dot on the right
+  edge.
+- **Patch-cable (explicit-only) wiring model.** Commit
+  `b3103be` makes the patchboard match the patch-cable mental
+  model: a new effect starts UNCONNECTED, the user wires it
+  manually. The manager has a new `useChainOrder` option
+  (default true for legacy / tests). When false,
+  `rebuildAudioGraph` skips chain-order derivation entirely —
+  only explicit `connect()` calls create audio paths. The
+  PatchboardUI sets `useChainOrder: false` in its constructor
+  so the production app runs in patch-cable mode. The
+  manager's `connect()` no longer short-circuits when an
+  adjacent chain-order pair would cover the explicit call
+  (in patch-cable mode there are no chain connections, so
+  every `connect()` is a real new connection).
+- **Drag-on-wire-to-insert uses explicit connections in
+  patch-cable mode.** In `useChainOrder: false` mode, dropping
+  a card on a wire: (a) disconnects the original wire, (b)
+  adds two new explicit connections (source → new, new →
+  destination), (c) moves the new card to the position right
+  after the source in the chain array. In `useChainOrder: true`
+  mode (legacy), the original chain-order splice mechanic still
+  works (chain array rearranged, explicit disconnect skipped).
+  The self-loop bug is also fixed: the explicit `connect()`
+  calls skip the case where source == new or destination ==
+  new.
+- **No auto-wiring means no sound until the user wires to
+  master.** With `useMasterOutput: true` (the patchboard's
+  default), only the effect whose id matches `masterOutputId`
+  reaches `audioContext.destination`. No master wire = silence.
+  This is intentional in the patch-cable model: a new effect
+  is silent until the user wires it. The visualizer still
+  moves because the analyser is attached to a different point
+  in the graph than destination.
+- **Test count:** 314 passing across 24 files (was 306).
+  8 new tests cover the patch-cable model (no auto-wire,
+  useChainOrder disabled, explicit connect() draws a wire,
+  master wire, master reaches destination, no master = no
+  destination, splice creates 2 new explicit connections,
+  RangeWidget with negative min).
 
 ---
 
@@ -399,7 +446,7 @@ ergonomic improvements on top of the patchboard:
 3. `git log -20 --oneline` — see recent commits.
 4. Read this file in full.
 5. Read `docs/ARCHITECTURE.md` (the 11-section plan).
-6. `npx vitest run` — confirm 306/306 baseline.
+6. `npx vitest run` — confirm 314/314 baseline.
 7. Resume work in the **Open / upcoming work** section.
 8. Update this file at the top of every new commit.
 9. Push to `origin/dev` with `git push origin dev`.
